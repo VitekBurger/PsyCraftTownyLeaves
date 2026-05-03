@@ -1,9 +1,9 @@
 package mao.psyCraftTowny.service;
 
 import mao.psyCraftTowny.model.KitType;
-import org.bukkit.Material;
 import org.bukkit.Color;
 import org.bukkit.FireworkEffect;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;

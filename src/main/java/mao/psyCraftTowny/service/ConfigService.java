@@ -134,7 +134,7 @@ public class ConfigService {
             }
         }
         return new Config(
-               teamCount,
+                teamCount,
                 playersPerTeam,
                 autoPlayersPerTeam,
                 gameDurationMinutes,

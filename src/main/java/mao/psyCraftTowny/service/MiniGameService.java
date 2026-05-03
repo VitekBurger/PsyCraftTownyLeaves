@@ -40,12 +40,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MiniGameService {
-    public enum Phase {
-        WAITING,
-        COUNTDOWN,
-        RUNNING
-    }
-
     private static final String TEAM_GUI_TITLE = "Выбор команды";
     private static final String KIT_GUI_TITLE = "Выбор кита";
     private static final int TEAM_GUI_SIZE = 27;
@@ -64,7 +58,6 @@ public class MiniGameService {
     private static final double CAPTURE_RADIUS = 8.0D;
     private static final int RED_TEAM = 1;
     private static final int BLUE_TEAM = 2;
-
     private final PsyCraftTowny plugin;
     private final KitService kitService;
     private final ConfigService configService;
@@ -83,20 +76,16 @@ public class MiniGameService {
     private final Map<String, BlockState> captureMarkerOriginalStates = new ConcurrentHashMap<>();
     private final Set<String> protectedPointBlocks = ConcurrentHashMap.newKeySet();
     private final BossBar statusBossBar;
-
     private Config config;
     private int gameTimeLeftSeconds = 0;
-
     private Phase phase = Phase.WAITING;
     private int countdownLeft = 0;
     private int countdownInitial = 30;
     private long tickCounter = 0L;
     private BukkitTask restoreTask;
-
     private BukkitTask lobbyMonitorTask;
     private BukkitTask countdownTask;
     private BukkitTask runningTask;
-
     public MiniGameService(PsyCraftTowny plugin) {
         this.plugin = plugin;
         this.kitService = new KitService();
@@ -532,14 +521,14 @@ public class MiniGameService {
         return true;
     }
 
+    public boolean isAutoPlayersPerTeam() {
+        return config.isAutoPlayersPerTeam();
+    }
+
     public void setAutoPlayersPerTeam(boolean enabled) {
         this.config.setAutoPlayersPerTeam(enabled);
         configService.saveConfig(this.config);
         updateBossBar();
-    }
-
-    public boolean isAutoPlayersPerTeam() {
-        return config.isAutoPlayersPerTeam();
     }
 
     public boolean setGameDurationMinutes(int minutes) {
@@ -1969,6 +1958,12 @@ public class MiniGameService {
             }
         }
         return max + 1;
+    }
+
+    public enum Phase {
+        WAITING,
+        COUNTDOWN,
+        RUNNING
     }
 }
 
