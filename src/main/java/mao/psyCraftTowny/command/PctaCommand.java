@@ -1,6 +1,5 @@
 package mao.psyCraftTowny.command;
 
-import mao.psyCraftTowny.PsyCraftTowny;
 import mao.psyCraftTowny.service.MiniGameService;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -12,11 +11,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 public class PctaCommand implements CommandExecutor, TabCompleter {
     private final MiniGameService miniGameService;
 
-    public PctaCommand(PsyCraftTowny plugin, MiniGameService miniGameService) {
+    public PctaCommand(MiniGameService miniGameService) {
         this.miniGameService = miniGameService;
     }
 
@@ -31,191 +31,266 @@ public class PctaCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        int offset = 0;
-        if (args[0].equalsIgnoreCase("set")) {
-            offset = 1;
-        }
-        if (offset >= args.length) {
-            sendUsage(sender);
-            return true;
-        }
-
-        String sub = args[offset].toLowerCase(Locale.ROOT);
-        switch (sub) {
-            case "lobby" -> {
-                if (!(sender instanceof Player player)) {
-                    sender.sendMessage("§cКоманда только для игрока.");
-                    return true;
-                }
-                miniGameService.setLobby(player);
-                sender.sendMessage("§aЛобби-спавн установлен.");
-                return true;
-            }
-            case "commands" -> {
-                if (offset + 1 >= args.length) {
-                    sender.sendMessage("§eИспользование: /pcta commands 2");
-                    return true;
-                }
-                int teams;
-                try {
-                    teams = Integer.parseInt(args[offset + 1]);
-                } catch (NumberFormatException ex) {
-                    sender.sendMessage("§cЧисло команд должно быть целым.");
-                    return true;
-                }
-                if (!miniGameService.setTeamsCount(teams)) {
-                    sender.sendMessage("§cСейчас поддерживаются только 2 команды (две стороны войны).");
-                    return true;
-                }
-                sender.sendMessage("§aКоличество команд установлено: " + teams);
-                return true;
-            }
-            case "playersonecommand" -> {
-                if (offset + 1 >= args.length) {
-                    sender.sendMessage("§eИспользование: /pcta playersonecommand <число>");
-                    return true;
-                }
-                int players;
-                try {
-                    players = Integer.parseInt(args[offset + 1]);
-                } catch (NumberFormatException ex) {
-                    sender.sendMessage("§cКоличество игроков должно быть целым.");
-                    return true;
-                }
-                if (!miniGameService.setPlayersPerTeam(players)) {
-                    sender.sendMessage("§cКоличество игроков должно быть больше 0.");
-                    return true;
-                }
-                sender.sendMessage("§aИгроков в команде установлено: " + players + " §7(авторазмер отключен)");
-                return true;
-            }
-            case "autosize" -> {
-                if (offset + 1 >= args.length) {
-                    sender.sendMessage("§eИспользование: /pcta autosize <on|off>");
-                    return true;
-                }
-                String mode = args[offset + 1].toLowerCase(Locale.ROOT);
-                if (!mode.equals("on") && !mode.equals("off")) {
-                    sender.sendMessage("§cДоступно только: on или off.");
-                    return true;
-                }
-                boolean enabled = mode.equals("on");
-                miniGameService.setAutoPlayersPerTeam(enabled);
-                sender.sendMessage("§aАвторазмер игроков в команде: " + (enabled ? "§aвключен" : "§cвыключен"));
-                return true;
-            }
-            case "spawn" -> {
-                if (!(sender instanceof Player player)) {
-                    sender.sendMessage("§cКоманда только для игрока.");
-                    return true;
-                }
-                if (offset + 1 >= args.length) {
-                    sender.sendMessage("§eИспользование: /pcta spawn <номер команды>");
-                    return true;
-                }
-                int teamId;
-                try {
-                    teamId = Integer.parseInt(args[offset + 1]);
-                } catch (NumberFormatException ex) {
-                    sender.sendMessage("§cНомер команды должен быть целым.");
-                    return true;
-                }
-                if (!miniGameService.setTeamSpawn(teamId, player.getLocation())) {
-                    sender.sendMessage("§cНеверный номер команды.");
-                    return true;
-                }
-                String teamName = teamId == 1 ? "§cКрасные" : "§9Синие";
-                sender.sendMessage("§aСпавн команды " + teamName + "§a установлен.");
-                return true;
-            }
-            case "kit" -> {
-                sender.sendMessage("§eКиты теперь выбираются игроками в лобби через меню выбора.");
-                sender.sendMessage("§7Доступные киты: Мечник, Лучник, Инженер.");
-                return true;
-            }
-            case "time" -> {
-                if (offset + 1 >= args.length) {
-                    sender.sendMessage("§eИспользование: /pcta time <минуты>");
-                    return true;
-                }
-                int minutes;
-                try {
-                    minutes = Integer.parseInt(args[offset + 1]);
-                } catch (NumberFormatException ex) {
-                    sender.sendMessage("§cВремя должно быть целым числом минут.");
-                    return true;
-                }
-                if (!miniGameService.setGameDurationMinutes(minutes)) {
-                    sender.sendMessage("§cВремя должно быть больше 0 минут.");
-                    return true;
-                }
-                sender.sendMessage("§aДлительность игры установлена: " + minutes + " мин.");
-                return true;
-            }
-            case "point" -> {
-                if (offset + 1 >= args.length) {
-                    sender.sendMessage("§eИспользование: /pcta point <add|list|remove>");
-                    return true;
-                }
-                String pointSub = args[offset + 1].toLowerCase(Locale.ROOT);
-                if (pointSub.equals("add")) {
-                    if (!(sender instanceof Player player)) {
-                        sender.sendMessage("§cКоманда только для игрока.");
-                        return true;
-                    }
-                    if (offset + 2 >= args.length) {
-                        sender.sendMessage("§eИспользование: /pcta point add <display_name>");
-                        return true;
-                    }
-                    final var displayName = String.join(" ", Arrays.copyOfRange(args, offset + 2, args.length));
-                    int pointId = miniGameService.addCapturePoint(player.getLocation(), displayName);
-                    sender.sendMessage("§aТочка захвата добавлена: id §f#" + pointId + "§a (радиус 8).");
-                    return true;
-                }
-                if (pointSub.equals("list")) {
-                    List<String> lines = miniGameService.describeCapturePoints();
-                    if (lines.isEmpty()) {
-                        sender.sendMessage("§eТочек захвата пока нет.");
-                        return true;
-                    }
-                    sender.sendMessage("§aСписок точек захвата:");
-                    for (String line : lines) {
-                        sender.sendMessage(line);
-                    }
-                    return true;
-                }
-                if (pointSub.equals("remove")) {
-                    if (offset + 2 >= args.length) {
-                        sender.sendMessage("§eИспользование: /pcta point remove <id>");
-                        return true;
-                    }
-                    int pointId;
-                    try {
-                        pointId = Integer.parseInt(args[offset + 2]);
-                    } catch (NumberFormatException ex) {
-                        sender.sendMessage("§cID точки должен быть числом.");
-                        return true;
-                    }
-                    if (!miniGameService.removeCapturePoint(pointId)) {
-                        sender.sendMessage("§cТочка с id #" + pointId + " не найдена.");
-                        return true;
-                    }
-                    sender.sendMessage("§aТочка #" + pointId + " удалена.");
-                    return true;
-                }
-                sender.sendMessage("§cНеизвестная подкоманда point. Доступно: add, list, remove.");
-                return true;
-            }
-            case "reload" -> {
-                miniGameService.reloadFromConfig();
-                sender.sendMessage("§aКонфиг перезагружен, новые значения применены.");
-                return true;
-            }
+        String sub = args[0].toLowerCase(Locale.ROOT);
+        return switch (sub) {
+            case "lobby" -> onLobby(sender);
+            case "commands" -> onCommands(sender, args);
+            case "playersonecommand" -> onPlayersOnCommand(sender, args);
+            case "autosize" -> onAutosize(sender, args);
+            case "spawn" -> onSpawn(sender, args);
+            case "kit" -> onKit(sender);
+            case "time" -> onTime(sender, args);
+            case "point" -> onPoint(sender, args);
+            case "map" -> onMap(sender, args);
+            case "reload" -> onReload(sender);
             default -> {
                 sendUsage(sender);
+                yield true;
+            }
+        };
+    }
+
+    private boolean onReload(CommandSender sender) {
+        miniGameService.reloadFromConfig();
+        sender.sendMessage("§aКонфиг перезагружен, новые значения применены.");
+        return true;
+    }
+
+    private boolean onPoint(CommandSender sender, String[] args) {
+        if (args.length <= 2) {
+            sender.sendMessage("§eИспользование: /pcta point <add|list|remove> <map_code>");
+            return true;
+        }
+        final var pointSub = args[1].toLowerCase(Locale.ROOT);
+        final var mapCode = args[2].toLowerCase(Locale.ROOT);
+        if (!miniGameService.isMapWithCodeExistent(mapCode)) {
+            sender.sendMessage("§eКарта с таким кодом не существует!");
+            return true;
+        }
+        switch (pointSub) {
+            case "add" -> {
+                if (!(sender instanceof Player player)) {
+                    sender.sendMessage("§cКоманда только для игрока.");
+                    return true;
+                }
+                if (args.length < 4) {
+                    sender.sendMessage("§eИспользование: /pcta point add <display_name>");
+                    return true;
+                }
+                final var displayName = String.join(" ", Arrays.copyOfRange(args, 3, args.length));
+                int pointId = miniGameService.addCapturePoint(mapCode, player.getLocation(), displayName);
+                sender.sendMessage("§aТочка захвата добавлена: id §f#" + pointId + "§a (радиус 8).");
+                return true;
+            }
+            case "list" -> {
+                List<String> lines = miniGameService.describeCapturePoints(mapCode);
+                if (lines.isEmpty()) {
+                    sender.sendMessage("§eТочек захвата пока нет.");
+                    return true;
+                }
+                sender.sendMessage("§aСписок точек захвата:");
+                for (String line : lines) {
+                    sender.sendMessage(line);
+                }
+                return true;
+            }
+            case "remove" -> {
+                if (args.length != 3) {
+                    sender.sendMessage("§eИспользование: /pcta point remove <id>");
+                    return true;
+                }
+                int pointId;
+                try {
+                    pointId = Integer.parseInt(args[2]);
+                } catch (NumberFormatException ex) {
+                    sender.sendMessage("§cID точки должен быть числом.");
+                    return true;
+                }
+                if (!miniGameService.removeCapturePoint(mapCode, pointId)) {
+                    sender.sendMessage("§cТочка с id #" + pointId + " не найдена.");
+                    return true;
+                }
+                sender.sendMessage("§aТочка #" + pointId + " удалена.");
                 return true;
             }
         }
+        sender.sendMessage("§cНеизвестная подкоманда point. Доступно: add, list, remove.");
+        return true;
+    }
+
+    private boolean onMap(CommandSender sender, String[] args) {
+        if (args.length <= 1) {
+            sender.sendMessage("§eИспользование: /pcta map <add|list|remove>");
+            return true;
+        }
+        String mapSub = args[1].toLowerCase(Locale.ROOT);
+        switch (mapSub) {
+            case "add" -> {
+                if (!(sender instanceof Player player)) {
+                    sender.sendMessage("§cКоманда только для игрока.");
+                    return true;
+                }
+                if (args.length < 5) {
+                    sender.sendMessage("§eИспользование: /pcta map add <code> <world_border_size> <display_name>");
+                    return true;
+                }
+                final var code = args[2].toLowerCase(Locale.ROOT);
+                final var worldBorderSize = Double.parseDouble(args[3]);
+                final var displayName = String.join(" ", Arrays.copyOfRange(args, 4, args.length));
+                miniGameService.addMap(player.getLocation(), code, worldBorderSize, displayName);
+                sender.sendMessage("§aТочка захвата добавлена: code §f#" + code + "§a.");
+                return true;
+            }
+            case "list" -> {
+                List<String> lines = miniGameService.describeMap();
+                if (lines.isEmpty()) {
+                    sender.sendMessage("§eКарт пока нет.");
+                    return true;
+                }
+                sender.sendMessage("§aСписок карт:");
+                for (String line : lines) {
+                    sender.sendMessage(line);
+                }
+                return true;
+            }
+            case "remove" -> {
+                if (args.length != 3) {
+                    sender.sendMessage("§eИспользование: /pcta point remove <id>");
+                    return true;
+                }
+                final var code = args[2];
+                if (!miniGameService.removeMap(code)) {
+                    sender.sendMessage("§cКарта с code #" + code + " не найдена.");
+                    return true;
+
+                }
+                sender.sendMessage("§aКарта #" + code + " удалена.");
+                return true;
+            }
+        }
+        sender.sendMessage("§cНеизвестная подкоманда map. Доступно: add, list, remove.");
+        return true;
+    }
+
+    private boolean onTime(CommandSender sender, String[] args) {
+        if (args.length <= 1) {
+            sender.sendMessage("§eИспользование: /pcta time <минуты>");
+            return true;
+        }
+        int minutes;
+        try {
+            minutes = Integer.parseInt(args[1]);
+        } catch (NumberFormatException ex) {
+            sender.sendMessage("§cВремя должно быть целым числом минут.");
+            return true;
+        }
+        if (!miniGameService.setGameDurationMinutes(minutes)) {
+            sender.sendMessage("§cВремя должно быть больше 0 минут.");
+            return true;
+        }
+        sender.sendMessage("§aДлительность игры установлена: " + minutes + " мин.");
+        return true;
+    }
+
+    private boolean onKit(CommandSender sender) {
+        sender.sendMessage("§eКиты теперь выбираются игроками в лобби через меню выбора.");
+        sender.sendMessage("§7Доступные киты: Мечник, Лучник, Инженер.");
+        return true;
+    }
+
+    private boolean onSpawn(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cКоманда только для игрока.");
+            return true;
+        }
+        if (args.length <= 2) {
+            sender.sendMessage("§eИспользование: /pcta spawn <код карты> <номер команды>");
+            return true;
+        }
+        if (!miniGameService.isMapWithCodeExistent(args[1])) {
+            sender.sendMessage("§eКарта не найдена!");
+            return true;
+        }
+        int teamId;
+        try {
+            teamId = Integer.parseInt(args[2]);
+        } catch (NumberFormatException ex) {
+            sender.sendMessage("§cНомер команды должен быть целым.");
+            return true;
+        }
+        if (!miniGameService.setTeamSpawn(args[1], teamId, player.getLocation())) {
+            sender.sendMessage("§cНеверный номер команды.");
+            return true;
+        }
+        String teamName = teamId == 1 ? "§cКрасные" : "§9Синие";
+        sender.sendMessage("§aСпавн команды " + teamName + "§a установлен.");
+        return true;
+    }
+
+    private boolean onAutosize(CommandSender sender, String[] args) {
+        if (args.length <= 1) {
+            sender.sendMessage("§eИспользование: /pcta autosize <on|off>");
+            return true;
+        }
+        String mode = args[1].toLowerCase(Locale.ROOT);
+        if (!mode.equals("on") && !mode.equals("off")) {
+            sender.sendMessage("§cДоступно только: on или off.");
+            return true;
+        }
+        boolean enabled = mode.equals("on");
+        miniGameService.setAutoPlayersPerTeam(enabled);
+        sender.sendMessage("§aАвторазмер игроков в команде: " + (enabled ? "§aвключен" : "§cвыключен"));
+        return true;
+    }
+
+    private boolean onPlayersOnCommand(CommandSender sender, String[] args) {
+        if (args.length <= 1) {
+            sender.sendMessage("§eИспользование: /pcta playersonecommand <число>");
+            return true;
+        }
+        int players;
+        try {
+            players = Integer.parseInt(args[1]);
+        } catch (NumberFormatException ex) {
+            sender.sendMessage("§cКоличество игроков должно быть целым.");
+            return true;
+        }
+        if (!miniGameService.setPlayersPerTeam(players)) {
+            sender.sendMessage("§cКоличество игроков должно быть больше 0.");
+            return true;
+        }
+        sender.sendMessage("§aИгроков в команде установлено: " + players + " §7(авторазмер отключен)");
+        return true;
+    }
+
+    private boolean onCommands(CommandSender sender, String[] args) {
+        if (args.length <= 1) {
+            sender.sendMessage("§eИспользование: /pcta commands 2");
+            return true;
+        }
+        int teams;
+        try {
+            teams = Integer.parseInt(args[1]);
+        } catch (NumberFormatException ex) {
+            sender.sendMessage("§cЧисло команд должно быть целым.");
+            return true;
+        }
+        if (!miniGameService.setTeamsCount(teams)) {
+            sender.sendMessage("§cСейчас поддерживаются только 2 команды (две стороны войны).");
+            return true;
+        }
+        sender.sendMessage("§aКоличество команд установлено: " + teams);
+        return true;
+    }
+
+    private boolean onLobby(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cКоманда только для игрока.");
+            return true;
+        }
+        miniGameService.setLobby(player);
+        sender.sendMessage("§aЛобби-спавн установлен.");
+        return true;
     }
 
     private void sendUsage(CommandSender sender) {
@@ -223,65 +298,87 @@ public class PctaCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/pcta commands 2 §7- число команд (сейчас только 2)");
         sender.sendMessage("§e/pcta playersonecommand 5 §7- игроков в одной команде");
         sender.sendMessage("§e/pcta autosize <on|off> §7- автообновление размера команды");
-        sender.sendMessage("§e/pcta spawn 1 §7- поставить спавн команды");
+        sender.sendMessage("§e/pcta spawn <map_code> <command_id> §7- поставить спавн команды");
         sender.sendMessage("§e/pcta time 20 §7- время игры в минутах");
-        sender.sendMessage("§e/pcta point add §7- добавить точку захвата в текущем блоке");
-        sender.sendMessage("§e/pcta point list §7- список точек захвата с id");
-        sender.sendMessage("§e/pcta point remove <id> §7- удалить точку по id");
+        sender.sendMessage("§e/pcta map add <map_code> <world_border_size> <display_name> §7- Добавить карту с кодом и именем с центром в текущей позиции и указанным размером");
+        sender.sendMessage("§e/pcta map remove <map_code> §7- удалить карту по code");
+        sender.sendMessage("§e/pcta map list §7- список карт");
+        sender.sendMessage("§e/pcta point add <map_code> <point_display_name> §7- добавить точку захвата в текущем блоке");
+        sender.sendMessage("§e/pcta point list <map_code> §7- список точек захвата с id");
+        sender.sendMessage("§e/pcta point remove <map_code> <id> §7- удалить точку по id");
         sender.sendMessage("§e/pcta kit §7- информация о доступных китах");
         sender.sendMessage("§e/pcta reload §7- перезагрузить config.yml");
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        List<String> out = new ArrayList<>();
+        final var out = new ArrayList<String>();
+        final var arg0 = args.length > 0 ? args[0].toLowerCase(Locale.ROOT) : "";
+        final var arg1 = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
+        final var arg2 = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "";
+        final var arg3 = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : "";
         if (args.length == 1) {
-            for (String s : List.of("lobby", "commands", "playersonecommand", "autosize", "spawn", "time", "point", "kit", "reload")) {
-                if (s.startsWith(args[0].toLowerCase(Locale.ROOT))) {
-                    out.add(s);
-                }
-            }
-            return out;
+            return getCompletions(
+                    arg0,
+                    List.of("lobby", "commands", "playersonecommand", "autosize", "spawn", "time", "point", "kit", "reload", "map")
+            );
         }
-        if (args.length == 2 && args[0].equalsIgnoreCase("point")) {
-            for (String s : List.of("add <display-name>", "list", "remove")) {
-                if (s.startsWith(args[1].toLowerCase(Locale.ROOT))) {
-                    out.add(s);
-                }
-            }
-            return out;
+        if (args.length == 2 && Set.of("point", "map").contains(arg0)) {
+            return getCompletions(
+                    arg1,
+                    List.of("add", "list", "remove")
+            );
         }
-        if (args.length == 3 && args[0].equalsIgnoreCase("point") && args[1].equalsIgnoreCase("remove")) {
-            String typed = args[2].toLowerCase(Locale.ROOT);
-            for (Integer id : miniGameService.getCapturePointIds()) {
-                String value = String.valueOf(id);
-                if (value.startsWith(typed)) {
-                    out.add(value);
-                }
-            }
-            return out;
+        if (args.length == 3 && arg0.equals("point") && Set.of("remove", "add", "list").contains(arg1)) {
+            return getCompletions(
+                    arg2,
+                    miniGameService.getMapCodes()
+            );
         }
-        if (args.length == 2 && (args[0].equalsIgnoreCase("commands") || args[0].equalsIgnoreCase("spawn") || args[0].equalsIgnoreCase("time") || args[0].equalsIgnoreCase("autosize"))) {
-            if ("2".startsWith(args[1])) {
-                out.add("2");
-            }
-            if (args[0].equalsIgnoreCase("spawn") && "1".startsWith(args[1])) {
-                out.add("1");
-            }
-            if (args[0].equalsIgnoreCase("spawn") && "2".startsWith(args[1])) {
-                out.add("2");
-            }
-            if (args[0].equalsIgnoreCase("time")) {
-                if ("20".startsWith(args[1])) out.add("20");
-                if ("15".startsWith(args[1])) out.add("15");
-                if ("10".startsWith(args[1])) out.add("10");
-            }
-            if (args[0].equalsIgnoreCase("autosize")) {
-                if ("on".startsWith(args[1].toLowerCase(Locale.ROOT))) out.add("on");
-                if ("off".startsWith(args[1].toLowerCase(Locale.ROOT))) out.add("off");
-            }
-            return out;
+        if (args.length == 4 && arg0.equals("point") && arg1.equals("remove")) {
+            return getCompletions(
+                    arg3,
+                    miniGameService.getCapturePointIds().stream()
+                            .map(String::valueOf)
+                            .toList()
+            );
+        }
+        if (args.length == 3 && arg0.equals("map") && arg1.equals("remove")) {
+            return getCompletions(
+                    arg2,
+                    miniGameService.getMapCodes()
+            );
+        }
+        if (args.length == 2 && "autosize".equals(arg0)) {
+            return getCompletions(
+                    arg1,
+                    List.of("on", "off")
+            );
+        }
+        if (args.length == 2 && "spawn".equals(arg0)) {
+            return getCompletions(
+                    arg1,
+                    miniGameService.getMapCodes()
+            );
+        }
+        if (args.length == 3 && "spawn".equals(arg0)) {
+            return getCompletions(
+                    arg2,
+                    List.of("1", "2")
+            );
+        }
+        if (args.length == 2 && "time".equals(arg0)) {
+            return getCompletions(
+                    arg2,
+                    List.of("10", "15", "20")
+            );
         }
         return out;
+    }
+
+    private List<String> getCompletions(String typed, List<String> possibleCompletions) {
+        return possibleCompletions.stream()
+                .filter(completion -> completion.startsWith(typed))
+                .toList();
     }
 }

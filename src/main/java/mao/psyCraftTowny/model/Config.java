@@ -3,20 +3,20 @@ package mao.psyCraftTowny.model;
 import org.bukkit.Location;
 
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Config {
-    private final Map<Integer, Location> teamSpawns;
-    private final Map<Integer, CapturePoint> capturePoints;
     private int teamCount;
     private int playersPerTeam;
     private boolean autoPlayersPerTeam;
     private int gameDurationMinutes;
     private int respawnsPerPlayer;
     private int respawnDelaySeconds;
-    private double capturePercentPerPlayerPerSecond;
+    private final double capturePercentPerPlayerPerSecond;
     private Location lobbySpawn;
+    private final Map<String, GameMap> maps;
 
-    public Config(int teamCount, int playersPerTeam, boolean autoPlayersPerTeam, int gameDurationMinutes, int respawnsPerPlayer, int respawnDelaySeconds, double capturePercentPerPlayerPerSecond, Location lobbySpawn, Map<Integer, Location> teamSpawns, Map<Integer, CapturePoint> capturePoints) {
+    public Config(int teamCount, int playersPerTeam, boolean autoPlayersPerTeam, int gameDurationMinutes, int respawnsPerPlayer, int respawnDelaySeconds, double capturePercentPerPlayerPerSecond, Location lobbySpawn, Map<String, GameMap> maps) {
         this.teamCount = teamCount;
         this.playersPerTeam = playersPerTeam;
         this.autoPlayersPerTeam = autoPlayersPerTeam;
@@ -25,8 +25,7 @@ public class Config {
         this.respawnDelaySeconds = respawnDelaySeconds;
         this.capturePercentPerPlayerPerSecond = capturePercentPerPlayerPerSecond;
         this.lobbySpawn = lobbySpawn;
-        this.teamSpawns = teamSpawns;
-        this.capturePoints = capturePoints;
+        this.maps = maps;
     }
 
     public int getTeamCount() {
@@ -85,12 +84,24 @@ public class Config {
         this.lobbySpawn = lobbySpawn;
     }
 
-    public Map<Integer, Location> getTeamSpawns() {
-        return teamSpawns;
+    public Map<Integer, Location> getTeamSpawns(String mapCode) {
+        final var map = maps.get(mapCode);
+        if (map != null) {
+            return map.getTeamSpawns();
+        }
+        return new ConcurrentHashMap<>();
     }
 
-    public Map<Integer, CapturePoint> getCapturePoints() {
-        return capturePoints;
+    public Map<Integer, CapturePoint> getCapturePoints(String mapCode) {
+        final var map = maps.get(mapCode);
+        if (map != null) {
+            return map.getCapturePoints();
+        }
+        return new ConcurrentHashMap<>();
+    }
+
+    public Map<String, GameMap> getMaps() {
+        return maps;
     }
 
     public double getCapturePercentPerPlayerPerSecond() {

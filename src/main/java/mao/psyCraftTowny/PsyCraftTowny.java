@@ -13,7 +13,7 @@ public final class PsyCraftTowny extends JavaPlugin {
         saveDefaultConfig();
         this.miniGameService = new MiniGameService(this);
 
-        PctaCommand pctaCommand = new PctaCommand(this, miniGameService);
+        PctaCommand pctaCommand = new PctaCommand(miniGameService);
         if (getCommand("pcta") != null) {
             getCommand("pcta").setExecutor(pctaCommand);
             getCommand("pcta").setTabCompleter(pctaCommand);

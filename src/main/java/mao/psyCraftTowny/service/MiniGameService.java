@@ -3,6 +3,7 @@ package mao.psyCraftTowny.service;
 import mao.psyCraftTowny.PsyCraftTowny;
 import mao.psyCraftTowny.model.CapturePoint;
 import mao.psyCraftTowny.model.Config;
+import mao.psyCraftTowny.model.GameMap;
 import mao.psyCraftTowny.model.KitType;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
@@ -12,6 +13,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.World;
+import org.bukkit.WorldBorder;
 import org.bukkit.block.Banner;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
@@ -31,12 +33,15 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MiniGameService {
@@ -77,6 +82,7 @@ public class MiniGameService {
     private final Set<String> protectedPointBlocks = ConcurrentHashMap.newKeySet();
     private final BossBar statusBossBar;
     private Config config;
+    private String currentMapCode;
     private int gameTimeLeftSeconds = 0;
     private Phase phase = Phase.WAITING;
     private int countdownLeft = 0;
@@ -86,6 +92,7 @@ public class MiniGameService {
     private BukkitTask lobbyMonitorTask;
     private BukkitTask countdownTask;
     private BukkitTask runningTask;
+
     public MiniGameService(PsyCraftTowny plugin) {
         this.plugin = plugin;
         this.kitService = new KitService();
@@ -214,7 +221,7 @@ public class MiniGameService {
             roundStatsService.ensurePlayer(uuid);
             preparePlayerForRound(player);
             applyPlayerTeamVisual(player);
-            Location spawn = config.getTeamSpawns().get(assigned);
+            Location spawn = config.getTeamSpawns(currentMapCode).get(assigned);
             if (spawn != null) {
                 player.teleport(spawn);
             } else {
@@ -320,7 +327,7 @@ public class MiniGameService {
                 return;
             }
             Integer teamId = teamByPlayer.get(uuid);
-            Location teamSpawn = teamId == null ? null : config.getTeamSpawns().get(teamId);
+            Location teamSpawn = teamId == null ? null : config.getTeamSpawns(currentMapCode).get(teamId);
             player.setGameMode(GameMode.SPECTATOR);
             if (teamSpawn != null) {
                 player.teleport(teamSpawn);
@@ -342,7 +349,7 @@ public class MiniGameService {
                     return;
                 }
                 preparePlayerForRound(online);
-                Location spawn = teamId == null ? null : config.getTeamSpawns().get(teamId);
+                Location spawn = teamId == null ? null : config.getTeamSpawns(currentMapCode).get(teamId);
                 if (spawn != null) {
                     online.teleport(spawn);
                 }
@@ -363,7 +370,7 @@ public class MiniGameService {
     public Location resolveRespawnLocation(Player player) {
         if (phase == Phase.RUNNING) {
             Integer teamId = teamByPlayer.get(player.getUniqueId());
-            Location teamSpawn = teamId == null ? null : config.getTeamSpawns().get(teamId);
+            Location teamSpawn = teamId == null ? null : config.getTeamSpawns(currentMapCode).get(teamId);
             if (teamSpawn != null) {
                 return teamSpawn.clone();
             }
@@ -541,27 +548,27 @@ public class MiniGameService {
         return true;
     }
 
-    public boolean setTeamSpawn(int teamId, Location location) {
+    public boolean setTeamSpawn(String mapCode, int teamId, Location location) {
         if (teamId < 1 || teamId > config.getTeamCount()) {
             return false;
         }
-        config.getTeamSpawns().put(teamId, location.clone());
+        config.getTeamSpawns(mapCode).put(teamId, location.clone());
         configService.saveConfig(this.config);
         return true;
     }
 
-    public int addCapturePoint(Location location, String displayName) {
+    public int addCapturePoint(String mapCode, Location location, String displayName) {
         if (location == null || location.getWorld() == null) {
             return -1;
         }
-        int id = nextCapturePointId();
+        int id = nextCapturePointId(mapCode);
         int pointX = location.getBlockX();
         int pointY = location.getBlockY();
         int pointZ = location.getBlockZ();
         String world = location.getWorld().getName();
         CapturePoint point = new CapturePoint(id, displayName, world, pointX, pointY, pointZ, 0D, 0);
-        config.getCapturePoints().put(id, point);
-        if (phase == Phase.RUNNING) {
+        config.getCapturePoints(mapCode).put(id, point);
+        if (phase == Phase.RUNNING && Objects.equals(mapCode, currentMapCode)) {
             clearCaptureOverlays();
             deployCaptureOverlays();
         }
@@ -569,12 +576,17 @@ public class MiniGameService {
         return id;
     }
 
-    public boolean removeCapturePoint(int pointId) {
-        CapturePoint removed = config.getCapturePoints().remove(pointId);
+    public void addMap(Location location, String code, double worldBorderSize, String displayName) {
+        config.getMaps().put(code, new GameMap(code, displayName, location, worldBorderSize, new ConcurrentHashMap<>(), new ConcurrentHashMap<>()));
+        configService.saveConfig(this.config);
+    }
+
+    public boolean removeCapturePoint(String mapCode, int pointId) {
+        CapturePoint removed = config.getCapturePoints(mapCode).remove(pointId);
         if (removed == null) {
             return false;
         }
-        if (phase == Phase.RUNNING) {
+        if (phase == Phase.RUNNING && Objects.equals(mapCode, currentMapCode)) {
             clearCaptureOverlays();
             deployCaptureOverlays();
         }
@@ -582,18 +594,46 @@ public class MiniGameService {
         return true;
     }
 
+    public boolean removeMap(String code) {
+        if (Objects.equals(currentMapCode, code)) {
+            return false;
+        }
+        GameMap removed = config.getMaps().remove(code);
+        if (removed == null) {
+            return false;
+        }
+        configService.saveConfig(this.config);
+        return true;
+    }
+
     public List<Integer> getCapturePointIds() {
-        List<Integer> ids = new ArrayList<>(config.getCapturePoints().keySet());
+        List<Integer> ids = new ArrayList<>(config.getCapturePoints(currentMapCode).keySet());
         ids.sort(Integer::compareTo);
         return ids;
     }
 
-    public List<String> describeCapturePoints() {
-        List<CapturePoint> points = new ArrayList<>(config.getCapturePoints().values());
-        points.sort((a, b) -> Integer.compare(a.id(), b.id()));
+    public List<String> getMapCodes() {
+        List<String> codes = new ArrayList<>(config.getMaps().keySet());
+        codes.sort(Comparator.naturalOrder());
+        return codes;
+    }
+
+    public List<String> describeCapturePoints(String mapCode) {
+        List<CapturePoint> points = new ArrayList<>(config.getCapturePoints(mapCode).values());
+        points.sort(Comparator.comparingInt(CapturePoint::id));
         List<String> out = new ArrayList<>();
         for (CapturePoint point : points) {
             out.add("§7#" + point.id() + " §f" + point.world() + " §7(" + point.pointX() + ", " + point.pointY() + ", " + point.pointZ() + ")");
+        }
+        return out;
+    }
+
+    public List<String> describeMap() {
+        List<GameMap> maps = new ArrayList<>(config.getMaps().values());
+        maps.sort(Comparator.comparing(GameMap::getCode, Comparator.naturalOrder()));
+        List<String> out = new ArrayList<>();
+        for (GameMap map : maps) {
+            out.add("§7#" + map.getCode() + " §f" + map.getDisplayName() + " §7(" + map.getWorldBorderCenter().getX() + ", " + map.getWorldBorderCenter().getZ() + " размер = " + map.getWorldBorderSize() + ")");
         }
         return out;
     }
@@ -632,7 +672,10 @@ public class MiniGameService {
         if (isLocationInSpawnProtection(block.getLocation(), config.getLobbySpawn())) {
             return true;
         }
-        for (Location spawn : config.getTeamSpawns().values()) {
+        if (currentMapCode == null) {
+            return false;
+        }
+        for (Location spawn : config.getTeamSpawns(currentMapCode).values()) {
             if (isLocationInSpawnProtection(block.getLocation(), spawn)) {
                 return true;
             }
@@ -780,8 +823,14 @@ public class MiniGameService {
             cancelCountdown("§cЛобби не задано. Используйте /pcta lobby");
             return;
         }
+        final var maps = config.getMaps();
+        if (maps == null || maps.isEmpty()) {
+            cancelCountdown("§cКарты не созданы. Используйте /pcta map");
+            return;
+        }
+        currentMapCode = resolveNextMap();
         for (int teamId = 1; teamId <= config.getTeamCount(); teamId++) {
-            if (!config.getTeamSpawns().containsKey(teamId)) {
+            if (!config.getTeamSpawns(currentMapCode).containsKey(teamId)) {
                 cancelCountdown("§cСпавн команды " + coloredTeamName(teamId) + "§c не задан. Используйте /pcta spawn " + teamId);
                 return;
             }
@@ -842,13 +891,28 @@ public class MiniGameService {
             roundStatsService.ensurePlayer(player.getUniqueId());
             preparePlayerForRound(player);
             applyPlayerTeamVisual(player);
-            player.teleport(config.getTeamSpawns().get(teamId));
+            player.teleport(config.getTeamSpawns(currentMapCode).get(teamId));
             applySelectedKit(player);
         }
 
         broadcast("§aИгра началась! Цель: захватить город противника или выбить всех врагов.");
+        WorldBorder border = Bukkit.getWorld("world").getWorldBorder();
+        border.setSize(maps.get(currentMapCode).getWorldBorderSize());
+        border.setCenter(maps.get(currentMapCode).getWorldBorderCenter().getX(), maps.get(currentMapCode).getWorldBorderCenter().getZ());
         startRunningTask();
         updateBossBar();
+    }
+
+    private String resolveNextMap() {
+        final var codes = config.getMaps().keySet().stream()
+                .toList();
+        if (codes.isEmpty()) {
+            return null;
+        }
+        if (codes.size() == 1) {
+            return codes.getFirst();
+        }
+        return codes.get(ThreadLocalRandom.current().nextInt(codes.size()));
     }
 
     private void startRunningTask() {
@@ -897,11 +961,11 @@ public class MiniGameService {
     }
 
     private void tickCapturePoints() {
-        if (config.getCapturePoints().isEmpty()) {
+        if (config.getCapturePoints(currentMapCode).isEmpty()) {
             return;
         }
         double perPlayer = config.getCapturePercentPerPlayerPerSecond();
-        for (CapturePoint point : config.getCapturePoints().values()) {
+        for (CapturePoint point : config.getCapturePoints(currentMapCode).values()) {
             Location center = getPointCenter(point);
             if (center == null) {
                 continue;
@@ -953,7 +1017,7 @@ public class MiniGameService {
     }
 
     private void sendCaptureActionBars() {
-        int total = Math.max(1, config.getCapturePoints().size());
+        int total = Math.max(1, config.getCapturePoints(currentMapCode).size());
         int owned1 = getOwnedPoints(RED_TEAM);
         int owned2 = getOwnedPoints(BLUE_TEAM);
         int p1 = getTeamControlPercent(RED_TEAM);
@@ -972,6 +1036,9 @@ public class MiniGameService {
     }
 
     private void endGame(int winnerTeam, String message) {
+        WorldBorder border = Bukkit.getWorld("world").getWorldBorder();
+        border.setSize(10000);
+        border.setCenter(0, 0);
         phase = Phase.WAITING;
         alivePlayers.clear();
         remainingRespawns.clear();
@@ -1311,7 +1378,7 @@ public class MiniGameService {
                 statusBossBar.setColor(BarColor.PURPLE);
                 int p1 = getTeamControlPercent(RED_TEAM);
                 int p2 = getTeamControlPercent(BLUE_TEAM);
-                int total = Math.max(1, config.getCapturePoints().size());
+                int total = Math.max(1, config.getCapturePoints(currentMapCode).size());
                 int owned1 = getOwnedPoints(RED_TEAM);
                 int owned2 = getOwnedPoints(BLUE_TEAM);
                 statusBossBar.setTitle("§eДо конца: §f" + formatTime(gameTimeLeftSeconds) + " §8| §cКрасные §f" + owned1 + "/" + total + " (" + p1 + "%) §8| §9Синие §f" + owned2 + "/" + total + " (" + p2 + "%)");
@@ -1364,7 +1431,7 @@ public class MiniGameService {
     }
 
     private void resetCapturePointsForRound() {
-        for (CapturePoint state : config.getCapturePoints().values()) {
+        for (CapturePoint state : config.getCapturePoints(currentMapCode).values()) {
             state.setProgress(0D);
             state.setOwnerTeam(0);
         }
@@ -1372,7 +1439,7 @@ public class MiniGameService {
 
     private int getOwnedPoints(int teamId) {
         int count = 0;
-        for (CapturePoint state : config.getCapturePoints().values()) {
+        for (CapturePoint state : config.getCapturePoints(currentMapCode).values()) {
             if (state.ownerTeam() == teamId) {
                 count++;
             }
@@ -1381,26 +1448,26 @@ public class MiniGameService {
     }
 
     private int getTeamControlPercent(int teamId) {
-        if (config.getCapturePoints().isEmpty()) {
+        if (config.getCapturePoints(currentMapCode).isEmpty()) {
             return 0;
         }
         double sum = 0D;
-        for (CapturePoint point : config.getCapturePoints().values()) {
+        for (CapturePoint point : config.getCapturePoints(currentMapCode).values()) {
             if (teamId == 1) {
                 sum += Math.max(0D, point.progress());
             } else if (teamId == 2) {
                 sum += Math.max(0D, -point.progress());
             }
         }
-        double max = config.getCapturePoints().size() * 100.0D;
+        double max = config.getCapturePoints(currentMapCode).size() * 100.0D;
         return (int) Math.round((sum / max) * 100.0D);
     }
 
     private void checkCaptureWinCondition() {
-        if (config.getCapturePoints().isEmpty()) {
+        if (config.getCapturePoints(currentMapCode).isEmpty()) {
             return;
         }
-        int total = config.getCapturePoints().size();
+        int total = config.getCapturePoints(currentMapCode).size();
         if (getOwnedPoints(RED_TEAM) >= total) {
             endGame(RED_TEAM, "§aПобеда Красных: захвачены все точки.");
             return;
@@ -1411,7 +1478,7 @@ public class MiniGameService {
     }
 
     private void spawnCaptureParticles() {
-        for (CapturePoint state : config.getCapturePoints().values()) {
+        for (CapturePoint state : config.getCapturePoints(currentMapCode).values()) {
             World world = Bukkit.getWorld(state.world());
             if (world == null) {
                 continue;
@@ -1445,7 +1512,7 @@ public class MiniGameService {
     }
 
     private String getPointStatusForPlayer(Player player) {
-        if (config.getCapturePoints().isEmpty()) {
+        if (config.getCapturePoints(currentMapCode).isEmpty()) {
             return "";
         }
         CapturePoint point = findPointForPlayer(player);
@@ -1481,7 +1548,7 @@ public class MiniGameService {
     }
 
     private void deployCaptureOverlays() {
-        for (CapturePoint state : config.getCapturePoints().values()) {
+        for (CapturePoint state : config.getCapturePoints(currentMapCode).values()) {
             World world = Bukkit.getWorld(state.world());
             if (world == null) {
                 continue;
@@ -1516,7 +1583,10 @@ public class MiniGameService {
         }
         captureMarkerOriginalStates.clear();
         protectedPointBlocks.clear();
-        for (CapturePoint state : config.getCapturePoints().values()) {
+        if (currentMapCode == null) {
+            return;
+        }
+        for (CapturePoint state : config.getCapturePoints(currentMapCode).values()) {
             state.setMarkerY(-1);
             state.setMarkerX(-1);
             state.setMarkerZ(-1);
@@ -1629,12 +1699,12 @@ public class MiniGameService {
         if (config.getLobbySpawn() != null && config.getLobbySpawn().getWorld() != null) {
             worlds.add(config.getLobbySpawn().getWorld().getName());
         }
-        for (Location loc : config.getTeamSpawns().values()) {
+        for (Location loc : config.getTeamSpawns(currentMapCode).values()) {
             if (loc != null && loc.getWorld() != null) {
                 worlds.add(loc.getWorld().getName());
             }
         }
-        for (CapturePoint point : config.getCapturePoints().values()) {
+        for (CapturePoint point : config.getCapturePoints(currentMapCode).values()) {
             worlds.add(point.world());
         }
         for (String worldName : worlds) {
@@ -1900,7 +1970,7 @@ public class MiniGameService {
         }
         CapturePoint nearest = null;
         double best = Double.MAX_VALUE;
-        for (CapturePoint point : config.getCapturePoints().values()) {
+        for (CapturePoint point : config.getCapturePoints(currentMapCode).values()) {
             if (!player.getWorld().getName().equals(point.world())) {
                 continue;
             }
@@ -1950,14 +2020,18 @@ public class MiniGameService {
         return teamVisualService.colorizeName(name, teamByPlayer.get(playerId), RED_TEAM, BLUE_TEAM);
     }
 
-    private int nextCapturePointId() {
+    private int nextCapturePointId(String mapCode) {
         int max = 0;
-        for (Integer id : config.getCapturePoints().keySet()) {
+        for (Integer id : config.getCapturePoints(mapCode).keySet()) {
             if (id != null && id > max) {
                 max = id;
             }
         }
         return max + 1;
+    }
+
+    public boolean isMapWithCodeExistent(String mapCode) {
+        return config.getMaps().containsKey(mapCode);
     }
 
     public enum Phase {
