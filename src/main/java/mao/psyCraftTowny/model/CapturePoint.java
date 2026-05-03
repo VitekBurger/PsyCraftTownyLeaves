@@ -1,7 +1,8 @@
-package mao.psyCraftTowny.service;
+package mao.psyCraftTowny.model;
 
-final class CapturePoint {
+public class CapturePoint {
     private final int id;
+    private final String displayName;
     private final String world;
     private final int pointX;
     private final int pointY;
@@ -13,8 +14,9 @@ final class CapturePoint {
     private int markerZ;
     private int groundY;
 
-    CapturePoint(int id, String world, int pointX, int pointY, int pointZ, double progress, int ownerTeam) {
+    public CapturePoint(int id, String displayName, String world, int pointX, int pointY, int pointZ, double progress, int ownerTeam) {
         this.id = id;
+        this.displayName = displayName;
         this.world = world;
         this.pointX = pointX;
         this.pointY = pointY;
@@ -27,71 +29,75 @@ final class CapturePoint {
         this.groundY = -1;
     }
 
-    int id() {
+    public int id() {
         return id;
     }
 
-    String world() {
+    public String displayName() {
+        return displayName;
+    }
+
+    public String world() {
         return world;
     }
 
-    int pointX() {
+    public int pointX() {
         return pointX;
     }
 
-    int pointY() {
+    public int pointY() {
         return pointY;
     }
 
-    int pointZ() {
+    public int pointZ() {
         return pointZ;
     }
 
-    double progress() {
+    public double progress() {
         return progress;
     }
 
-    void setProgress(double progress) {
+    public void setProgress(double progress) {
         this.progress = progress;
     }
 
-    int ownerTeam() {
+    public int ownerTeam() {
         return ownerTeam;
     }
 
-    void setOwnerTeam(int ownerTeam) {
+    public void setOwnerTeam(int ownerTeam) {
         this.ownerTeam = ownerTeam;
     }
 
-    int markerY() {
+    public int markerY() {
         return markerY;
     }
 
-    void setMarkerY(int markerY) {
+    public void setMarkerY(int markerY) {
         this.markerY = markerY;
     }
 
-    int markerX() {
+    public int markerX() {
         return markerX;
     }
 
-    void setMarkerX(int markerX) {
+    public void setMarkerX(int markerX) {
         this.markerX = markerX;
     }
 
-    int markerZ() {
+    public int markerZ() {
         return markerZ;
     }
 
-    void setMarkerZ(int markerZ) {
+    public void setMarkerZ(int markerZ) {
         this.markerZ = markerZ;
     }
 
-    int groundY() {
+    public int groundY() {
         return groundY;
     }
 
-    void setGroundY(int groundY) {
+    public void setGroundY(int groundY) {
         this.groundY = groundY;
     }
 }

@@ -1,33 +1,34 @@
 package mao.psyCraftTowny.service;
 
 import mao.psyCraftTowny.PsyCraftTowny;
+import mao.psyCraftTowny.model.CapturePoint;
+import mao.psyCraftTowny.model.Config;
+import mao.psyCraftTowny.model.KitType;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
+import org.bukkit.DyeColor;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.World;
-import org.bukkit.DyeColor;
-import org.bukkit.block.Block;
 import org.bukkit.block.Banner;
+import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.banner.Pattern;
 import org.bukkit.block.banner.PatternType;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -60,17 +61,13 @@ public class MiniGameService {
     private static final int KIT_NINJA_SLOT = 28;
     private static final int KIT_TRAPPER_SLOT = 25;
     private static final int KIT_MEDIC_SLOT = 43;
-    private static final int DEFAULT_TEAMS = 2;
-    private static final int DEFAULT_PLAYERS_PER_TEAM = 5;
-    private static final int DEFAULT_GAME_DURATION_MINUTES = 20;
-    private static final int DEFAULT_RESPAWNS_PER_PLAYER = 2;
-    private static final int DEFAULT_RESPAWN_DELAY_SECONDS = 5;
     private static final double CAPTURE_RADIUS = 8.0D;
     private static final int RED_TEAM = 1;
     private static final int BLUE_TEAM = 2;
 
     private final PsyCraftTowny plugin;
     private final KitService kitService;
+    private final ConfigService configService;
     private final Map<UUID, Integer> teamByPlayer = new ConcurrentHashMap<>();
     private final Map<UUID, KitType> kitByPlayer = new ConcurrentHashMap<>();
     private final Set<UUID> teamMenuOpen = ConcurrentHashMap.newKeySet();
@@ -81,22 +78,14 @@ public class MiniGameService {
     private final RoundStatsService roundStatsService = new RoundStatsService();
     private final TeamVisualService teamVisualService = new TeamVisualService();
     private final Set<UUID> queuedRespawns = ConcurrentHashMap.newKeySet();
-    private final Map<Integer, Location> teamSpawns = new ConcurrentHashMap<>();
-    private final Map<Integer, CapturePoint> capturePoints = new ConcurrentHashMap<>();
     private final Map<String, BlockState> changedBlocks = new ConcurrentHashMap<>();
     private final Set<String> changedChunks = ConcurrentHashMap.newKeySet();
     private final Map<String, BlockState> captureMarkerOriginalStates = new ConcurrentHashMap<>();
     private final Set<String> protectedPointBlocks = ConcurrentHashMap.newKeySet();
     private final BossBar statusBossBar;
 
-    private Location lobbySpawn;
-    private int teamCount = DEFAULT_TEAMS;
-    private int playersPerTeam = DEFAULT_PLAYERS_PER_TEAM;
-    private boolean autoPlayersPerTeam = true;
-    private int gameDurationMinutes = DEFAULT_GAME_DURATION_MINUTES;
+    private Config config;
     private int gameTimeLeftSeconds = 0;
-    private int respawnsPerPlayer = DEFAULT_RESPAWNS_PER_PLAYER;
-    private int respawnDelaySeconds = DEFAULT_RESPAWN_DELAY_SECONDS;
 
     private Phase phase = Phase.WAITING;
     private int countdownLeft = 0;
@@ -113,7 +102,8 @@ public class MiniGameService {
         this.kitService = new KitService();
         this.statusBossBar = Bukkit.createBossBar("Ожидание игроков", BarColor.WHITE, BarStyle.SEGMENTED_10);
         this.statusBossBar.setVisible(true);
-        loadFromConfig();
+        this.configService = new ConfigService(plugin);
+        this.config = configService.readConfig();
         updateBossBar();
     }
 
@@ -129,8 +119,7 @@ public class MiniGameService {
     }
 
     public void reloadFromConfig() {
-        plugin.reloadConfig();
-        loadFromConfig();
+        this.config = configService.readConfig();
         if (phase == Phase.RUNNING) {
             clearCaptureOverlays();
             deployCaptureOverlays();
@@ -232,11 +221,11 @@ public class MiniGameService {
                 return;
             }
             alivePlayers.add(uuid);
-            remainingRespawns.put(uuid, persistedRespawns == null ? respawnsPerPlayer : persistedRespawns);
+            remainingRespawns.put(uuid, persistedRespawns == null ? config.getRespawnsPerPlayer() : persistedRespawns);
             roundStatsService.ensurePlayer(uuid);
             preparePlayerForRound(player);
             applyPlayerTeamVisual(player);
-            Location spawn = teamSpawns.get(assigned);
+            Location spawn = config.getTeamSpawns().get(assigned);
             if (spawn != null) {
                 player.teleport(spawn);
             } else {
@@ -297,7 +286,7 @@ public class MiniGameService {
             return;
         }
         UUID uuid = player.getUniqueId();
-        int left = remainingRespawns.getOrDefault(uuid, respawnsPerPlayer);
+        int left = remainingRespawns.getOrDefault(uuid, config.getRespawnsPerPlayer());
         if (left <= 0) {
             alivePlayers.remove(uuid);
             player.sendMessage("§cУ вас закончились респавны. Вы выбыли до конца игры.");
@@ -313,7 +302,7 @@ public class MiniGameService {
         }
         remainingRespawns.put(uuid, left - 1);
         queuedRespawns.add(uuid);
-        player.sendMessage("§eВы возродитесь через " + respawnDelaySeconds + " сек. Осталось респавнов: §f" + (left - 1));
+        player.sendMessage("§eВы возродитесь через " + config.getRespawnDelaySeconds() + " сек. Осталось респавнов: §f" + (left - 1));
         // Убираем экран смерти как в BedWars: принудительный respawn сразу.
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             Player online = Bukkit.getPlayer(uuid);
@@ -342,15 +331,15 @@ public class MiniGameService {
                 return;
             }
             Integer teamId = teamByPlayer.get(uuid);
-            Location teamSpawn = teamId == null ? null : teamSpawns.get(teamId);
+            Location teamSpawn = teamId == null ? null : config.getTeamSpawns().get(teamId);
             player.setGameMode(GameMode.SPECTATOR);
             if (teamSpawn != null) {
                 player.teleport(teamSpawn);
             } else {
                 teleportToLobby(player);
             }
-            for (int i = 1; i <= respawnDelaySeconds; i++) {
-                int left = respawnDelaySeconds - i + 1;
+            for (int i = 1; i <= config.getRespawnDelaySeconds(); i++) {
+                int left = config.getRespawnDelaySeconds() - i + 1;
                 Bukkit.getScheduler().runTaskLater(plugin, () -> {
                     Player online = Bukkit.getPlayer(uuid);
                     if (online != null && online.isOnline() && phase == Phase.RUNNING) {
@@ -364,12 +353,12 @@ public class MiniGameService {
                     return;
                 }
                 preparePlayerForRound(online);
-                Location spawn = teamId == null ? null : teamSpawns.get(teamId);
+                Location spawn = teamId == null ? null : config.getTeamSpawns().get(teamId);
                 if (spawn != null) {
                     online.teleport(spawn);
                 }
                 applySelectedKit(online);
-            }, respawnDelaySeconds * 20L);
+            }, config.getRespawnDelaySeconds() * 20L);
             return;
         }
         if (isObserver(player)) {
@@ -385,12 +374,12 @@ public class MiniGameService {
     public Location resolveRespawnLocation(Player player) {
         if (phase == Phase.RUNNING) {
             Integer teamId = teamByPlayer.get(player.getUniqueId());
-            Location teamSpawn = teamId == null ? null : teamSpawns.get(teamId);
+            Location teamSpawn = teamId == null ? null : config.getTeamSpawns().get(teamId);
             if (teamSpawn != null) {
                 return teamSpawn.clone();
             }
         }
-        return lobbySpawn == null ? player.getLocation() : lobbySpawn.clone();
+        return config.getLobbySpawn() == null ? player.getLocation() : config.getLobbySpawn().clone();
     }
 
     public String getPointStatusLine(Player player) {
@@ -446,7 +435,7 @@ public class MiniGameService {
             player.sendMessage("§cВо время игры смена команды недоступна.");
             return;
         }
-        if (teamId < 1 || teamId > teamCount) {
+        if (teamId < 1 || teamId > config.getTeamCount()) {
             player.sendMessage("§cТакой команды нет.");
             return;
         }
@@ -456,7 +445,7 @@ public class MiniGameService {
             return;
         }
         int onlineInTeam = getOnlineTeamCount(teamId);
-        if (onlineInTeam >= playersPerTeam) {
+        if (onlineInTeam >= config.getPlayersPerTeam()) {
             player.sendMessage("§cКоманда заполнена.");
             return;
         }
@@ -520,16 +509,16 @@ public class MiniGameService {
     }
 
     public void setLobby(Player player) {
-        this.lobbySpawn = player.getLocation().clone();
-        saveToConfig();
+        this.config.setLobbySpawn(player.getLocation().clone());
+        configService.saveConfig(this.config);
     }
 
     public boolean setTeamsCount(int count) {
         if (count != 2) {
             return false;
         }
-        this.teamCount = count;
-        saveToConfig();
+        this.config.setTeamCount(count);
+        configService.saveConfig(this.config);
         return true;
     }
 
@@ -537,42 +526,42 @@ public class MiniGameService {
         if (count < 1) {
             return false;
         }
-        this.playersPerTeam = count;
-        this.autoPlayersPerTeam = false;
-        saveToConfig();
+        this.config.setPlayersPerTeam(count);
+        this.config.setAutoPlayersPerTeam(false);
+        configService.saveConfig(this.config);
         return true;
     }
 
     public void setAutoPlayersPerTeam(boolean enabled) {
-        this.autoPlayersPerTeam = enabled;
-        saveToConfig();
+        this.config.setAutoPlayersPerTeam(enabled);
+        configService.saveConfig(this.config);
         updateBossBar();
     }
 
     public boolean isAutoPlayersPerTeam() {
-        return autoPlayersPerTeam;
+        return config.isAutoPlayersPerTeam();
     }
 
     public boolean setGameDurationMinutes(int minutes) {
         if (minutes < 1) {
             return false;
         }
-        this.gameDurationMinutes = minutes;
-        saveToConfig();
+        this.config.setGameDurationMinutes(minutes);
+        configService.saveConfig(this.config);
         updateBossBar();
         return true;
     }
 
     public boolean setTeamSpawn(int teamId, Location location) {
-        if (teamId < 1 || teamId > teamCount) {
+        if (teamId < 1 || teamId > config.getTeamCount()) {
             return false;
         }
-        teamSpawns.put(teamId, location.clone());
-        saveToConfig();
+        config.getTeamSpawns().put(teamId, location.clone());
+        configService.saveConfig(this.config);
         return true;
     }
 
-    public int addCapturePoint(Location location) {
+    public int addCapturePoint(Location location, String displayName) {
         if (location == null || location.getWorld() == null) {
             return -1;
         }
@@ -581,18 +570,18 @@ public class MiniGameService {
         int pointY = location.getBlockY();
         int pointZ = location.getBlockZ();
         String world = location.getWorld().getName();
-        CapturePoint point = new CapturePoint(id, world, pointX, pointY, pointZ, 0D, 0);
-        capturePoints.put(id, point);
+        CapturePoint point = new CapturePoint(id, displayName, world, pointX, pointY, pointZ, 0D, 0);
+        config.getCapturePoints().put(id, point);
         if (phase == Phase.RUNNING) {
             clearCaptureOverlays();
             deployCaptureOverlays();
         }
-        saveToConfig();
+        configService.saveConfig(this.config);
         return id;
     }
 
     public boolean removeCapturePoint(int pointId) {
-        CapturePoint removed = capturePoints.remove(pointId);
+        CapturePoint removed = config.getCapturePoints().remove(pointId);
         if (removed == null) {
             return false;
         }
@@ -600,18 +589,18 @@ public class MiniGameService {
             clearCaptureOverlays();
             deployCaptureOverlays();
         }
-        saveToConfig();
+        configService.saveConfig(this.config);
         return true;
     }
 
     public List<Integer> getCapturePointIds() {
-        List<Integer> ids = new ArrayList<>(capturePoints.keySet());
+        List<Integer> ids = new ArrayList<>(config.getCapturePoints().keySet());
         ids.sort(Integer::compareTo);
         return ids;
     }
 
     public List<String> describeCapturePoints() {
-        List<CapturePoint> points = new ArrayList<>(capturePoints.values());
+        List<CapturePoint> points = new ArrayList<>(config.getCapturePoints().values());
         points.sort((a, b) -> Integer.compare(a.id(), b.id()));
         List<String> out = new ArrayList<>();
         for (CapturePoint point : points) {
@@ -651,10 +640,10 @@ public class MiniGameService {
         if (block == null || block.getWorld() == null) {
             return false;
         }
-        if (isLocationInSpawnProtection(block.getLocation(), lobbySpawn)) {
+        if (isLocationInSpawnProtection(block.getLocation(), config.getLobbySpawn())) {
             return true;
         }
-        for (Location spawn : teamSpawns.values()) {
+        for (Location spawn : config.getTeamSpawns().values()) {
             if (isLocationInSpawnProtection(block.getLocation(), spawn)) {
                 return true;
             }
@@ -663,15 +652,15 @@ public class MiniGameService {
     }
 
     public int getTeamCount() {
-        return teamCount;
+        return config.getTeamCount();
     }
 
     public int getPlayersPerTeam() {
-        return playersPerTeam;
+        return config.getPlayersPerTeam();
     }
 
     public int getGameDurationMinutes() {
-        return gameDurationMinutes;
+        return config.getGameDurationMinutes();
     }
 
     public int getReadyPlayersCount() {
@@ -681,7 +670,7 @@ public class MiniGameService {
                 continue;
             }
             Integer teamId = teamByPlayer.get(player.getUniqueId());
-            if (teamId != null && teamId >= 1 && teamId <= teamCount) {
+            if (teamId != null && teamId >= 1 && teamId <= config.getTeamCount()) {
                 count++;
             }
         }
@@ -689,13 +678,13 @@ public class MiniGameService {
     }
 
     private void tickLobbyState() {
-        if (autoPlayersPerTeam) {
+        if (config.isAutoPlayersPerTeam()) {
             adjustPlayersPerTeamByOnline();
         }
         if (phase == Phase.RUNNING) {
             return;
         }
-        int maxPlayers = teamCount * playersPerTeam;
+        int maxPlayers = config.getTeamCount() * config.getPlayersPerTeam();
         int minPlayers = (int) Math.ceil(maxPlayers * 0.5D);
         int ready = getReadyPlayersCount();
 
@@ -757,7 +746,7 @@ public class MiniGameService {
             if (phase != Phase.COUNTDOWN) {
                 return;
             }
-            int maxPlayers = teamCount * playersPerTeam;
+            int maxPlayers = config.getTeamCount() * config.getPlayersPerTeam();
             int minPlayers = (int) Math.ceil(maxPlayers * 0.5D);
             int ready = getReadyPlayersCount();
             if (ready < minPlayers) {
@@ -798,19 +787,19 @@ public class MiniGameService {
         if (phase != Phase.COUNTDOWN) {
             return;
         }
-        if (lobbySpawn == null) {
+        if (config.getLobbySpawn() == null) {
             cancelCountdown("§cЛобби не задано. Используйте /pcta lobby");
             return;
         }
-        for (int teamId = 1; teamId <= teamCount; teamId++) {
-            if (!teamSpawns.containsKey(teamId)) {
+        for (int teamId = 1; teamId <= config.getTeamCount(); teamId++) {
+            if (!config.getTeamSpawns().containsKey(teamId)) {
                 cancelCountdown("§cСпавн команды " + coloredTeamName(teamId) + "§c не задан. Используйте /pcta spawn " + teamId);
                 return;
             }
         }
 
         Map<Integer, List<Player>> participantsByTeam = new HashMap<>();
-        for (int teamId = 1; teamId <= teamCount; teamId++) {
+        for (int teamId = 1; teamId <= config.getTeamCount(); teamId++) {
             participantsByTeam.put(teamId, new ArrayList<>());
         }
 
@@ -819,7 +808,7 @@ public class MiniGameService {
                 continue;
             }
             Integer teamId = teamByPlayer.get(online.getUniqueId());
-            if (teamId != null && teamId >= 1 && teamId <= teamCount) {
+            if (teamId != null && teamId >= 1 && teamId <= config.getTeamCount()) {
                 participantsByTeam.get(teamId).add(online);
             }
         }
@@ -842,7 +831,7 @@ public class MiniGameService {
         resetCapturePointsForRound();
         clearCaptureOverlays();
         deployCaptureOverlays();
-        gameTimeLeftSeconds = gameDurationMinutes * 60;
+        gameTimeLeftSeconds = config.getGameDurationMinutes() * 60;
         tickCounter = 0L;
 
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -853,18 +842,18 @@ public class MiniGameService {
                 continue;
             }
             Integer teamId = teamByPlayer.get(player.getUniqueId());
-            if (teamId == null || teamId < 1 || teamId > teamCount) {
+            if (teamId == null || teamId < 1 || teamId > config.getTeamCount()) {
                 player.getInventory().clear();
                 player.setGameMode(GameMode.SPECTATOR);
                 teleportToLobby(player);
                 continue;
             }
             alivePlayers.add(player.getUniqueId());
-            remainingRespawns.put(player.getUniqueId(), respawnsPerPlayer);
+            remainingRespawns.put(player.getUniqueId(), config.getRespawnsPerPlayer());
             roundStatsService.ensurePlayer(player.getUniqueId());
             preparePlayerForRound(player);
             applyPlayerTeamVisual(player);
-            player.teleport(teamSpawns.get(teamId));
+            player.teleport(config.getTeamSpawns().get(teamId));
             applySelectedKit(player);
         }
 
@@ -919,14 +908,11 @@ public class MiniGameService {
     }
 
     private void tickCapturePoints() {
-        if (capturePoints.isEmpty()) {
+        if (config.getCapturePoints().isEmpty()) {
             return;
         }
-        double perPlayer = plugin.getConfig().getDouble(
-                "minigame.capture.percent-per-player-per-second",
-                plugin.getConfig().getDouble("minigame.capture.percent-per-second", 2.0D)
-        );
-        for (CapturePoint point : capturePoints.values()) {
+        double perPlayer = config.getCapturePercentPerPlayerPerSecond();
+        for (CapturePoint point : config.getCapturePoints().values()) {
             Location center = getPointCenter(point);
             if (center == null) {
                 continue;
@@ -941,14 +927,14 @@ public class MiniGameService {
                 point.setProgress(100D);
                 if (point.ownerTeam() != RED_TEAM) {
                     point.setOwnerTeam(RED_TEAM);
-                    Bukkit.broadcastMessage("§aТочка захвачена: §cКрасные§a.");
+                    Bukkit.broadcastMessage("§aТочка %s захвачена: §cКрасные§a.".formatted(point.displayName()));
                     rewardCaptureForPoint(point, RED_TEAM);
                 }
             } else if (point.progress() <= -100D) {
                 point.setProgress(-100D);
                 if (point.ownerTeam() != BLUE_TEAM) {
                     point.setOwnerTeam(BLUE_TEAM);
-                    Bukkit.broadcastMessage("§aТочка захвачена: §9Синие§a.");
+                    Bukkit.broadcastMessage("§aТочка %s захвачена: §9Синие§a.".formatted(point.displayName()));
                     rewardCaptureForPoint(point, BLUE_TEAM);
                 }
             } else {
@@ -978,7 +964,7 @@ public class MiniGameService {
     }
 
     private void sendCaptureActionBars() {
-        int total = Math.max(1, capturePoints.size());
+        int total = Math.max(1, config.getCapturePoints().size());
         int owned1 = getOwnedPoints(RED_TEAM);
         int owned2 = getOwnedPoints(BLUE_TEAM);
         int p1 = getTeamControlPercent(RED_TEAM);
@@ -1145,8 +1131,8 @@ public class MiniGameService {
     }
 
     private void teleportToLobby(Player player) {
-        if (lobbySpawn != null) {
-            player.teleport(lobbySpawn);
+        if (config.getLobbySpawn() != null) {
+            player.teleport(config.getLobbySpawn());
         }
     }
 
@@ -1181,7 +1167,7 @@ public class MiniGameService {
             int online = getOnlineTeamCount(teamId);
             meta.setDisplayName(teamId == RED_TEAM ? "§cКрасные" : "§9Синие");
             List<String> lore = new ArrayList<>();
-            lore.add("§7Игроков: §f" + online + "/" + playersPerTeam);
+            lore.add("§7Игроков: §f" + online + "/" + config.getPlayersPerTeam());
             lore.add("§eНажмите для выбора");
             Integer current = teamByPlayer.get(viewer.getUniqueId());
             if (current != null && current == teamId) {
@@ -1317,7 +1303,7 @@ public class MiniGameService {
 
     private void updateBossBar() {
         attachBossBarPlayers();
-        int maxPlayers = teamCount * playersPerTeam;
+        int maxPlayers = config.getTeamCount() * config.getPlayersPerTeam();
         int ready = getReadyPlayersCount();
         switch (phase) {
             case WAITING -> {
@@ -1336,11 +1322,11 @@ public class MiniGameService {
                 statusBossBar.setColor(BarColor.PURPLE);
                 int p1 = getTeamControlPercent(RED_TEAM);
                 int p2 = getTeamControlPercent(BLUE_TEAM);
-                int total = Math.max(1, capturePoints.size());
+                int total = Math.max(1, config.getCapturePoints().size());
                 int owned1 = getOwnedPoints(RED_TEAM);
                 int owned2 = getOwnedPoints(BLUE_TEAM);
                 statusBossBar.setTitle("§eДо конца: §f" + formatTime(gameTimeLeftSeconds) + " §8| §cКрасные §f" + owned1 + "/" + total + " (" + p1 + "%) §8| §9Синие §f" + owned2 + "/" + total + " (" + p2 + "%)");
-                int totalTime = Math.max(1, gameDurationMinutes * 60);
+                int totalTime = Math.max(1, config.getGameDurationMinutes() * 60);
                 double progress = (double) gameTimeLeftSeconds / (double) totalTime;
                 statusBossBar.setProgress(clamp01(progress));
             }
@@ -1388,143 +1374,8 @@ public class MiniGameService {
         endGame(0, "§eВремя вышло. Ничья.");
     }
 
-    private void loadFromConfig() {
-        FileConfiguration cfg = plugin.getConfig();
-        this.teamCount = Math.max(2, cfg.getInt("minigame.teams", DEFAULT_TEAMS));
-        this.playersPerTeam = Math.max(1, cfg.getInt("minigame.players-per-team", DEFAULT_PLAYERS_PER_TEAM));
-        this.autoPlayersPerTeam = cfg.getBoolean("minigame.auto-players-per-team", true);
-        this.gameDurationMinutes = Math.max(1, cfg.getInt("minigame.game-duration-minutes", DEFAULT_GAME_DURATION_MINUTES));
-        this.respawnsPerPlayer = Math.max(0, cfg.getInt("minigame.respawns-per-player", DEFAULT_RESPAWNS_PER_PLAYER));
-        this.respawnDelaySeconds = Math.max(1, cfg.getInt("minigame.respawn-delay-seconds", DEFAULT_RESPAWN_DELAY_SECONDS));
-        this.lobbySpawn = readLocation(cfg.getConfigurationSection("minigame.lobby"));
-
-        this.teamSpawns.clear();
-        ConfigurationSection teamsSection = cfg.getConfigurationSection("minigame.team-spawns");
-        if (teamsSection != null) {
-            for (String key : teamsSection.getKeys(false)) {
-                try {
-                    int teamId = Integer.parseInt(key);
-                    Location spawn = readLocation(teamsSection.getConfigurationSection(key));
-                    if (spawn != null) {
-                        teamSpawns.put(teamId, spawn);
-                    }
-                } catch (NumberFormatException ignored) {
-                }
-            }
-        }
-        this.capturePoints.clear();
-        ConfigurationSection pointsSection = cfg.getConfigurationSection("minigame.capture.points");
-        if (pointsSection != null) {
-            int maxId = 0;
-            for (String key : pointsSection.getKeys(false)) {
-                ConfigurationSection section = pointsSection.getConfigurationSection(key);
-                if (section == null) {
-                    continue;
-                }
-                int pointId;
-                try {
-                    pointId = Integer.parseInt(key);
-                } catch (NumberFormatException ignored) {
-                    pointId = section.getInt("id", 0);
-                }
-                String world = section.getString("world");
-                if (world == null || Bukkit.getWorld(world) == null) {
-                    continue;
-                }
-                int pointX;
-                int pointY;
-                int pointZ;
-                if (section.contains("x") && section.contains("y") && section.contains("z")) {
-                    pointX = section.getInt("x");
-                    pointY = section.getInt("y");
-                    pointZ = section.getInt("z");
-                } else {
-                    int chunkX = section.getInt("chunk-x");
-                    int chunkZ = section.getInt("chunk-z");
-                    pointX = (chunkX << 4) + 8;
-                    pointY = Bukkit.getWorld(world).getHighestBlockYAt(pointX, (chunkZ << 4) + 8);
-                    pointZ = (chunkZ << 4) + 8;
-                }
-                if (pointId <= 0) {
-                    pointId = ++maxId;
-                } else {
-                    maxId = Math.max(maxId, pointId);
-                }
-                while (capturePoints.containsKey(pointId)) {
-                    pointId++;
-                    maxId = Math.max(maxId, pointId);
-                }
-                CapturePoint point = new CapturePoint(pointId, world, pointX, pointY, pointZ, 0D, 0);
-                capturePoints.put(pointId, point);
-            }
-        }
-    }
-
-    private void saveToConfig() {
-        FileConfiguration cfg = plugin.getConfig();
-        cfg.set("minigame.teams", teamCount);
-        cfg.set("minigame.players-per-team", playersPerTeam);
-        cfg.set("minigame.auto-players-per-team", autoPlayersPerTeam);
-        cfg.set("minigame.game-duration-minutes", gameDurationMinutes);
-        cfg.set("minigame.respawns-per-player", respawnsPerPlayer);
-        cfg.set("minigame.respawn-delay-seconds", respawnDelaySeconds);
-        writeLocation(cfg, "minigame.lobby", lobbySpawn);
-
-        cfg.set("minigame.team-spawns", null);
-        for (Map.Entry<Integer, Location> entry : teamSpawns.entrySet()) {
-            writeLocation(cfg, "minigame.team-spawns." + entry.getKey(), entry.getValue());
-        }
-        cfg.set("minigame.capture.points", null);
-        List<Integer> ids = new ArrayList<>(capturePoints.keySet());
-        ids.sort(Integer::compareTo);
-        for (Integer id : ids) {
-            CapturePoint point = capturePoints.get(id);
-            if (point == null) {
-                continue;
-            }
-            String path = "minigame.capture.points." + id;
-            cfg.set(path + ".id", point.id());
-            cfg.set(path + ".world", point.world());
-            cfg.set(path + ".x", point.pointX());
-            cfg.set(path + ".y", point.pointY());
-            cfg.set(path + ".z", point.pointZ());
-        }
-        plugin.saveConfig();
-    }
-
-    private void writeLocation(FileConfiguration cfg, String path, Location location) {
-        if (location == null || location.getWorld() == null) {
-            cfg.set(path, null);
-            return;
-        }
-        cfg.set(path + ".world", location.getWorld().getName());
-        cfg.set(path + ".x", location.getX());
-        cfg.set(path + ".y", location.getY());
-        cfg.set(path + ".z", location.getZ());
-        cfg.set(path + ".yaw", location.getYaw());
-        cfg.set(path + ".pitch", location.getPitch());
-    }
-
-    private Location readLocation(ConfigurationSection section) {
-        if (section == null) {
-            return null;
-        }
-        String world = section.getString("world");
-        if (world == null || Bukkit.getWorld(world) == null) {
-            return null;
-        }
-        return new Location(
-                Bukkit.getWorld(world),
-                section.getDouble("x"),
-                section.getDouble("y"),
-                section.getDouble("z"),
-                (float) section.getDouble("yaw"),
-                (float) section.getDouble("pitch")
-        );
-    }
-
     private void resetCapturePointsForRound() {
-        for (CapturePoint state : capturePoints.values()) {
+        for (CapturePoint state : config.getCapturePoints().values()) {
             state.setProgress(0D);
             state.setOwnerTeam(0);
         }
@@ -1532,7 +1383,7 @@ public class MiniGameService {
 
     private int getOwnedPoints(int teamId) {
         int count = 0;
-        for (CapturePoint state : capturePoints.values()) {
+        for (CapturePoint state : config.getCapturePoints().values()) {
             if (state.ownerTeam() == teamId) {
                 count++;
             }
@@ -1541,26 +1392,26 @@ public class MiniGameService {
     }
 
     private int getTeamControlPercent(int teamId) {
-        if (capturePoints.isEmpty()) {
+        if (config.getCapturePoints().isEmpty()) {
             return 0;
         }
         double sum = 0D;
-        for (CapturePoint point : capturePoints.values()) {
+        for (CapturePoint point : config.getCapturePoints().values()) {
             if (teamId == 1) {
                 sum += Math.max(0D, point.progress());
             } else if (teamId == 2) {
                 sum += Math.max(0D, -point.progress());
             }
         }
-        double max = capturePoints.size() * 100.0D;
+        double max = config.getCapturePoints().size() * 100.0D;
         return (int) Math.round((sum / max) * 100.0D);
     }
 
     private void checkCaptureWinCondition() {
-        if (capturePoints.isEmpty()) {
+        if (config.getCapturePoints().isEmpty()) {
             return;
         }
-        int total = capturePoints.size();
+        int total = config.getCapturePoints().size();
         if (getOwnedPoints(RED_TEAM) >= total) {
             endGame(RED_TEAM, "§aПобеда Красных: захвачены все точки.");
             return;
@@ -1571,7 +1422,7 @@ public class MiniGameService {
     }
 
     private void spawnCaptureParticles() {
-        for (CapturePoint state : capturePoints.values()) {
+        for (CapturePoint state : config.getCapturePoints().values()) {
             World world = Bukkit.getWorld(state.world());
             if (world == null) {
                 continue;
@@ -1605,7 +1456,7 @@ public class MiniGameService {
     }
 
     private String getPointStatusForPlayer(Player player) {
-        if (capturePoints.isEmpty()) {
+        if (config.getCapturePoints().isEmpty()) {
             return "";
         }
         CapturePoint point = findPointForPlayer(player);
@@ -1641,7 +1492,7 @@ public class MiniGameService {
     }
 
     private void deployCaptureOverlays() {
-        for (CapturePoint state : capturePoints.values()) {
+        for (CapturePoint state : config.getCapturePoints().values()) {
             World world = Bukkit.getWorld(state.world());
             if (world == null) {
                 continue;
@@ -1676,7 +1527,7 @@ public class MiniGameService {
         }
         captureMarkerOriginalStates.clear();
         protectedPointBlocks.clear();
-        for (CapturePoint state : capturePoints.values()) {
+        for (CapturePoint state : config.getCapturePoints().values()) {
             state.setMarkerY(-1);
             state.setMarkerX(-1);
             state.setMarkerZ(-1);
@@ -1786,15 +1637,15 @@ public class MiniGameService {
 
     private void cleanupDroppedItems() {
         Set<String> worlds = ConcurrentHashMap.newKeySet();
-        if (lobbySpawn != null && lobbySpawn.getWorld() != null) {
-            worlds.add(lobbySpawn.getWorld().getName());
+        if (config.getLobbySpawn() != null && config.getLobbySpawn().getWorld() != null) {
+            worlds.add(config.getLobbySpawn().getWorld().getName());
         }
-        for (Location loc : teamSpawns.values()) {
+        for (Location loc : config.getTeamSpawns().values()) {
             if (loc != null && loc.getWorld() != null) {
                 worlds.add(loc.getWorld().getName());
             }
         }
-        for (CapturePoint point : capturePoints.values()) {
+        for (CapturePoint point : config.getCapturePoints().values()) {
             worlds.add(point.world());
         }
         for (String worldName : worlds) {
@@ -1928,15 +1779,15 @@ public class MiniGameService {
         }
         UUID uuid = player.getUniqueId();
         Integer current = teamByPlayer.get(uuid);
-        if (current != null && current >= 1 && current <= teamCount) {
+        if (current != null && current >= 1 && current <= config.getTeamCount()) {
             return;
         }
         int team1 = getOnlineTeamCount(RED_TEAM);
         int team2 = getOnlineTeamCount(BLUE_TEAM);
         int assigned = team1 <= team2 ? RED_TEAM : BLUE_TEAM;
-        if (getOnlineTeamCount(assigned) >= playersPerTeam) {
+        if (getOnlineTeamCount(assigned) >= config.getPlayersPerTeam()) {
             int other = assigned == RED_TEAM ? BLUE_TEAM : RED_TEAM;
-            if (getOnlineTeamCount(other) >= playersPerTeam) {
+            if (getOnlineTeamCount(other) >= config.getPlayersPerTeam()) {
                 player.sendMessage("§cОбе команды уже заполнены. Ожидайте следующую игру.");
                 return;
             }
@@ -1956,8 +1807,8 @@ public class MiniGameService {
             online++;
         }
         int target = 8 + Math.max(0, (online - 15) / 2);
-        if (playersPerTeam != target) {
-            playersPerTeam = target;
+        if (config.getPlayersPerTeam() != target) {
+            config.setPlayersPerTeam(target);
             updateBossBar();
         }
     }
@@ -2060,7 +1911,7 @@ public class MiniGameService {
         }
         CapturePoint nearest = null;
         double best = Double.MAX_VALUE;
-        for (CapturePoint point : capturePoints.values()) {
+        for (CapturePoint point : config.getCapturePoints().values()) {
             if (!player.getWorld().getName().equals(point.world())) {
                 continue;
             }
@@ -2112,7 +1963,7 @@ public class MiniGameService {
 
     private int nextCapturePointId() {
         int max = 0;
-        for (Integer id : capturePoints.keySet()) {
+        for (Integer id : config.getCapturePoints().keySet()) {
             if (id != null && id > max) {
                 max = id;
             }
