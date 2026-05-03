@@ -1,4 +1,4 @@
-package mao.psyCraftTowny.service;
+package mao.psyCraftTowny.model;
 
 public enum KitType {
     SWORDSMAN("Мечник"),

@@ -1,5 +1,6 @@
 package mao.psyCraftTowny.service;
 
+import mao.psyCraftTowny.model.KitType;
 import org.bukkit.Material;
 import org.bukkit.Color;
 import org.bukkit.FireworkEffect;

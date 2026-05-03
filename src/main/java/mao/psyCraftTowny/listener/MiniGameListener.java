@@ -1,10 +1,8 @@
 package mao.psyCraftTowny.listener;
 
 import mao.psyCraftTowny.service.MiniGameService;
-import mao.psyCraftTowny.service.KitType;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.GameMode;
-import org.bukkit.Material;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;

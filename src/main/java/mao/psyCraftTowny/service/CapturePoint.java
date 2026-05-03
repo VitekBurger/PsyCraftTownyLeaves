@@ -1,7 +1,8 @@
 package mao.psyCraftTowny.service;
 
-final class CapturePoint {
+public class CapturePoint {
     private final int id;
+    private final String displayName;
     private final String world;
     private final int pointX;
     private final int pointY;
@@ -13,8 +14,9 @@ final class CapturePoint {
     private int markerZ;
     private int groundY;
 
-    CapturePoint(int id, String world, int pointX, int pointY, int pointZ, double progress, int ownerTeam) {
+    CapturePoint(int id, String displayName, String world, int pointX, int pointY, int pointZ, double progress, int ownerTeam) {
         this.id = id;
+        this.displayName = displayName;
         this.world = world;
         this.pointX = pointX;
         this.pointY = pointY;
@@ -29,6 +31,10 @@ final class CapturePoint {
 
     int id() {
         return id;
+    }
+
+    String displayName() {
+        return displayName;
     }
 
     String world() {
