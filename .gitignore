@@ -2,3 +2,12 @@
 /target/
 dependency-reduced-pom.xml
 *.iml
+
+.idea/
+
+!.idea/vcs.xml
+!.idea/encodings.xml
+!.idea/codeStyleSettings.xml
+!.idea/misc.xml
+!.idea/compiler.xml
+!.idea/jarRepositories.xml
