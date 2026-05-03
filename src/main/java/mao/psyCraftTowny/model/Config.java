@@ -1,5 +1,6 @@
 package mao.psyCraftTowny.model;
 
+import mao.psyCraftTowny.service.CapturePoint;
 import org.bukkit.Location;
 
 import java.util.Map;
