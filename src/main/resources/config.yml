@@ -1,0 +1,13 @@
+minigame:
+  teams: 2
+  players-per-team: 5
+  auto-players-per-team: true
+  game-duration-minutes: 20
+  respawns-per-player: 2
+  respawn-delay-seconds: 5
+  lobby: {}
+  team-spawns: {}
+  capture:
+    point-radius: 8.0
+    percent-per-player-per-second: 2.0
+    points: {}

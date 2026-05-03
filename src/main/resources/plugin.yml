@@ -1,0 +1,12 @@
+name: PsyCraftTowny
+version: '1.0-SNAPSHOT'
+main: mao.psyCraftTowny.PsyCraftTowny
+api-version: '1.21'
+commands:
+  pcta:
+    description: Настройка мини-игры
+    usage: /pcta <lobby|commands|playersonecommand|autosize|spawn|time|point add|point list|point remove|kit|reload>
+permissions:
+  pct.admin:
+    description: Настройка мини-игры
+    default: op
