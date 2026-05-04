@@ -1,62 +1,38 @@
 package mao.psyCraftTowny.service;
 
+import mao.psyCraftTowny.PsyCraftTowny;
 import mao.psyCraftTowny.model.KitType;
+import org.bukkit.Bukkit;
 import org.bukkit.Color;
+import org.bukkit.DyeColor;
 import org.bukkit.FireworkEffect;
+import org.bukkit.GameMode;
 import org.bukkit.Material;
+import org.bukkit.block.Banner;
+import org.bukkit.block.banner.Pattern;
+import org.bukkit.block.banner.PatternType;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
-import java.util.ArrayList;
 import java.util.List;
 
-public class KitService {
-    public ItemStack buildKitMenuItem(KitType type, boolean selected) {
-        Material material = switch (type) {
-            case SWORDSMAN -> Material.IRON_SWORD;
-            case ARCHER -> Material.BOW;
-            case ENGINEER -> Material.TNT;
-            case SUPPORT -> Material.GOLDEN_APPLE;
-            case CROSSBOWMAN -> Material.CROSSBOW;
-            case TANK -> Material.SHIELD;
-            case NINJA -> Material.ENDER_PEARL;
-            case TRAPPER -> Material.COBWEB;
-            case MEDIC -> Material.POTION;
-        };
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName("§fКит: " + type.displayName());
-            List<String> lore = new ArrayList<>();
-            switch (type) {
-                case SWORDSMAN -> lore.add("§7Железный меч, блоки, лава, железный сет, стейки");
-                case ARCHER -> lore.add("§7Кольчужный сет, лук, 2 стака стрел, деревянный меч, лава, стейки, блоки");
-                case ENGINEER -> lore.add("§7ТНТ, вода, редстоун-механизмы, полублоки, кожаный сет");
-                case SUPPORT -> lore.add("§7Поддержка: золотые яблоки, еда, усиления и броня");
-                case CROSSBOWMAN -> lore.add("§7Арбалет, болты, фейерверки и мобильный бой");
-                case TANK -> lore.add("§7Толстая броня, щит и фронтлайн");
-                case NINJA -> lore.add("§7Скорость, перлы и быстрый раш");
-                case TRAPPER -> lore.add("§7Паутина, ловушки и контроль проходов");
-                case MEDIC -> lore.add("§7Лечение союзников и выживаемость");
-            }
-            lore.add("§eНажмите для выбора");
-            if (selected) {
-                lore.add("§aВы выбрали этот кит");
-            }
-            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
-            meta.setLore(lore);
-            item.setItemMeta(meta);
-        }
-        return item;
+import static mao.psyCraftTowny.service.MiniGameService.BLUE_TEAM;
+import static mao.psyCraftTowny.service.MiniGameService.RED_TEAM;
+
+public class PlayerItemsService {
+    private final PsyCraftTowny plugin;
+
+    public PlayerItemsService(PsyCraftTowny plugin) {
+        this.plugin = plugin;
     }
 
-    public void applyKit(Player player, KitType type) {
+    public void giveAllItems(Player player, KitType type, Integer teamId) {
         switch (type) {
             case SWORDSMAN -> applySwordsmanKit(player);
             case ARCHER -> applyArcherKit(player);
@@ -68,34 +44,10 @@ public class KitService {
             case TRAPPER -> applyTrapperKit(player);
             case MEDIC -> applyMedicKit(player);
         }
-    }
-
-    public KitType resolveKitTypeByMenuItem(ItemStack stack) {
-        if (stack == null || !stack.hasItemMeta()) {
-            return null;
+        if (type == KitType.TANK) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 0, false, false, false));
         }
-        ItemMeta meta = stack.getItemMeta();
-        if (meta == null || !meta.hasDisplayName()) {
-            return null;
-        }
-        String name = meta.getDisplayName();
-        for (KitType type : KitType.values()) {
-            if (name.contains(type.displayName())) {
-                return type;
-            }
-        }
-        return switch (stack.getType()) {
-            case IRON_SWORD -> KitType.SWORDSMAN;
-            case BOW -> KitType.ARCHER;
-            case TNT -> KitType.ENGINEER;
-            case GOLDEN_APPLE -> KitType.SUPPORT;
-            case CROSSBOW -> KitType.CROSSBOWMAN;
-            case SHIELD -> KitType.TANK;
-            case ENDER_PEARL -> KitType.NINJA;
-            case COBWEB -> KitType.TRAPPER;
-            case POTION -> KitType.MEDIC;
-            default -> null;
-        };
+        giveTeamShield(player, teamId);
     }
 
     private void applySwordsmanKit(Player player) {
@@ -258,5 +210,59 @@ public class KitService {
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    private void giveTeamShield(Player player, Integer teamId) {
+        if (teamId == null) {
+            return;
+        }
+        ItemStack shield = new ItemStack(Material.SHIELD);
+        ItemMeta itemMeta = shield.getItemMeta();
+        if (itemMeta instanceof BlockStateMeta meta) {
+            Banner banner = (Banner) meta.getBlockState();
+            DyeColor teamColor = teamId == RED_TEAM ? DyeColor.RED : DyeColor.BLUE;
+            banner.setBaseColor(teamColor);
+            banner.addPattern(new Pattern(DyeColor.WHITE, PatternType.BORDER));
+            meta.setBlockState(banner);
+            if (teamId == RED_TEAM) {
+                meta.setDisplayName("§cЩит Красных");
+            } else if (teamId == BLUE_TEAM) {
+                meta.setDisplayName("§9Щит Синих");
+            } else {
+                meta.setDisplayName("§fКомандный щит");
+            }
+            meta.setLore(List.of("§7Щит вашей команды"));
+            shield.setItemMeta(meta);
+        }
+        player.getInventory().setItemInOffHand(shield);
+        if (!hasTeamShieldInInventory(player)) {
+            player.getInventory().addItem(shield.clone());
+        }
+        player.updateInventory();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline() && player.getGameMode() != GameMode.SPECTATOR) {
+                ItemStack off = player.getInventory().getItemInOffHand();
+                if (off == null || off.getType() != Material.SHIELD) {
+                    player.getInventory().setItemInOffHand(shield.clone());
+                    player.updateInventory();
+                }
+            }
+        }, 2L);
+    }
+
+    private boolean hasTeamShieldInInventory(Player player) {
+        if (player == null) {
+            return false;
+        }
+        for (ItemStack stack : player.getInventory().getContents()) {
+            if (stack == null || stack.getType() != Material.SHIELD || !stack.hasItemMeta()) {
+                continue;
+            }
+            ItemMeta meta = stack.getItemMeta();
+            if (meta != null && meta.hasDisplayName() && meta.getDisplayName().contains("Щит")) {
+                return true;
+            }
+        }
+        return false;
     }
 }

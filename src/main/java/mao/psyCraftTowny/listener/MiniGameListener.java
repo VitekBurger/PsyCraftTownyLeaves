@@ -1,6 +1,9 @@
 package mao.psyCraftTowny.listener;
 
+import mao.psyCraftTowny.service.KitSelectionService;
+import mao.psyCraftTowny.service.MapSelectionService;
 import mao.psyCraftTowny.service.MiniGameService;
+import mao.psyCraftTowny.service.TeamSelectionService;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
@@ -35,9 +38,15 @@ import org.bukkit.inventory.ItemStack;
 
 public class MiniGameListener implements Listener {
     private final MiniGameService miniGameService;
+    private final TeamSelectionService teamSelectionService;
+    private final MapSelectionService mapSelectionService;
+    private final KitSelectionService kitSelectionService;
 
-    public MiniGameListener(MiniGameService miniGameService) {
+    public MiniGameListener(MiniGameService miniGameService, TeamSelectionService teamSelectionService, MapSelectionService mapSelectionService, KitSelectionService kitSelectionService) {
         this.miniGameService = miniGameService;
+        this.teamSelectionService = teamSelectionService;
+        this.mapSelectionService = mapSelectionService;
+        this.kitSelectionService = kitSelectionService;
     }
 
     @EventHandler
@@ -177,14 +186,18 @@ public class MiniGameListener implements Listener {
             return;
         }
         ItemStack item = event.getItem();
-        if (miniGameService.isSelectorItem(item)) {
+        if (teamSelectionService.isTeamSelectorItem(item)) {
             event.setCancelled(true);
             miniGameService.openTeamSelector(player);
             return;
         }
-        if (miniGameService.isKitSelectorItem(item)) {
+        if (kitSelectionService.isKitSelectorItem(item)) {
             event.setCancelled(true);
             miniGameService.openKitSelector(player);
+        }
+        if (mapSelectionService.isMapSelectorItem(item)) {
+            event.setCancelled(true);
+            miniGameService.openMapSelector(player);
         }
     }
 
@@ -193,13 +206,15 @@ public class MiniGameListener implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
-        boolean teamGui = miniGameService.isTeamMenuOpen(player);
-        boolean kitGui = miniGameService.isKitMenuOpen(player);
-        if (!teamGui && !kitGui) {
+        boolean teamGui = teamSelectionService.isTeamMenuOpen(player);
+        boolean kitGui = kitSelectionService.isKitMenuOpen(player);
+        boolean mapGui = mapSelectionService.isMapMenuOpen(player);
+        if (!teamGui && !kitGui && !mapGui) {
             String title = PlainTextComponentSerializer.plainText().serialize(event.getView().title());
-            teamGui = title != null && title.contains(miniGameService.getLobbyGuiTitle());
-            kitGui = title != null && title.contains(miniGameService.getKitGuiTitle());
-            if (!teamGui && !kitGui) {
+            teamGui = title.contains(teamSelectionService.getTeamGuiTitle());
+            kitGui = title.contains(kitSelectionService.getKitGuiTitle());
+            mapGui = title.contains(mapSelectionService.getMapGuiTitle());
+            if (!teamGui && !kitGui && !mapGui) {
                 return;
             }
         }
@@ -221,6 +236,9 @@ public class MiniGameListener implements Listener {
         if (kitGui && event.getCurrentItem() != null) {
             miniGameService.selectKitByMenuItem(player, event.getCurrentItem());
             return;
+        }
+        if (mapGui && event.getCurrentItem() != null) {
+            mapSelectionService.selectMapByMenuItem(player, event.getCurrentItem());
         }
     }
 

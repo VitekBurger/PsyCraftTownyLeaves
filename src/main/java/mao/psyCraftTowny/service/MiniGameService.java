@@ -7,28 +7,19 @@ import mao.psyCraftTowny.model.GameMap;
 import mao.psyCraftTowny.model.KitType;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
-import org.bukkit.DyeColor;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.WorldBorder;
-import org.bukkit.block.Banner;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
-import org.bukkit.block.banner.Pattern;
-import org.bukkit.block.banner.PatternType;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.BlockStateMeta;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -44,32 +35,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static mao.psyCraftTowny.utils.PlayerUtils.isObserver;
+
 public class MiniGameService {
-    private static final String TEAM_GUI_TITLE = "Выбор команды";
-    private static final String KIT_GUI_TITLE = "Выбор кита";
-    private static final int TEAM_GUI_SIZE = 27;
-    private static final int KIT_GUI_SIZE = 54;
-    private static final int TEAM_ONE_SLOT = 11;
-    private static final int TEAM_TWO_SLOT = 15;
-    private static final int KIT_SWORDSMAN_SLOT = 10;
-    private static final int KIT_ARCHER_SLOT = 13;
-    private static final int KIT_ENGINEER_SLOT = 16;
-    private static final int KIT_SUPPORT_SLOT = 34;
-    private static final int KIT_CROSSBOW_SLOT = 22;
-    private static final int KIT_TANK_SLOT = 19;
-    private static final int KIT_NINJA_SLOT = 28;
-    private static final int KIT_TRAPPER_SLOT = 25;
-    private static final int KIT_MEDIC_SLOT = 43;
     private static final double CAPTURE_RADIUS = 8.0D;
-    private static final int RED_TEAM = 1;
-    private static final int BLUE_TEAM = 2;
+    public static final int RED_TEAM = 1;
+    public static final int BLUE_TEAM = 2;
     private final PsyCraftTowny plugin;
-    private final KitService kitService;
+    private final PlayerItemsService playerItemsService;
     private final ConfigService configService;
-    private final Map<UUID, Integer> teamByPlayer = new ConcurrentHashMap<>();
-    private final Map<UUID, KitType> kitByPlayer = new ConcurrentHashMap<>();
-    private final Set<UUID> teamMenuOpen = ConcurrentHashMap.newKeySet();
-    private final Set<UUID> kitMenuOpen = ConcurrentHashMap.newKeySet();
+    private final TeamSelectionService teamSelectionService;
+    private final MapSelectionService mapSelectionService;
+    private final KitSelectionService kitSelectionService;
     private final Set<UUID> pendingRunningKitChoice = ConcurrentHashMap.newKeySet();
     private final Set<UUID> alivePlayers = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Integer> remainingRespawns = new ConcurrentHashMap<>();
@@ -87,15 +64,17 @@ public class MiniGameService {
     private Phase phase = Phase.WAITING;
     private int countdownLeft = 0;
     private int countdownInitial = 30;
-    private long tickCounter = 0L;
     private BukkitTask restoreTask;
     private BukkitTask lobbyMonitorTask;
     private BukkitTask countdownTask;
     private BukkitTask runningTask;
 
-    public MiniGameService(PsyCraftTowny plugin) {
+    public MiniGameService(PsyCraftTowny plugin, PlayerItemsService playerItemsService, TeamSelectionService teamSelectionService, MapSelectionService mapSelectionService, KitSelectionService kitSelectionService) {
         this.plugin = plugin;
-        this.kitService = new KitService();
+        this.playerItemsService = playerItemsService;
+        this.teamSelectionService = teamSelectionService;
+        this.mapSelectionService = mapSelectionService;
+        this.kitSelectionService = kitSelectionService;
         this.statusBossBar = Bukkit.createBossBar("Ожидание игроков", BarColor.WHITE, BarStyle.SEGMENTED_10);
         this.statusBossBar.setVisible(true);
         this.configService = new ConfigService(plugin);
@@ -148,42 +127,12 @@ public class MiniGameService {
         return phase;
     }
 
-    public String getLobbyGuiTitle() {
-        return TEAM_GUI_TITLE;
-    }
-
-    public String getKitGuiTitle() {
-        return KIT_GUI_TITLE;
-    }
-
-    public boolean isSelectorItem(ItemStack stack) {
-        if (stack == null || stack.getType() != Material.NETHER_STAR) {
-            return false;
-        }
-        if (!stack.hasItemMeta()) {
-            return false;
-        }
-        ItemMeta meta = stack.getItemMeta();
-        return meta != null && meta.hasDisplayName() && "§bВыбор команды".equals(meta.getDisplayName());
-    }
-
-    public boolean isKitSelectorItem(ItemStack stack) {
-        if (stack == null || stack.getType() != Material.BLAZE_POWDER) {
-            return false;
-        }
-        if (!stack.hasItemMeta()) {
-            return false;
-        }
-        ItemMeta meta = stack.getItemMeta();
-        return meta != null && meta.hasDisplayName() && "§dВыбор кита".equals(meta.getDisplayName());
-    }
-
     public void handlePlayerJoin(Player player) {
         statusBossBar.addPlayer(player);
         statusBossBar.setVisible(true);
-        kitByPlayer.putIfAbsent(player.getUniqueId(), KitType.SWORDSMAN);
+        kitSelectionService.selectDefaultKitForNewPlayer(player);
         if (isObserver(player)) {
-            teamByPlayer.remove(player.getUniqueId());
+            teamSelectionService.removeTeamSelection(player);
             alivePlayers.remove(player.getUniqueId());
             remainingRespawns.remove(player.getUniqueId());
             queuedRespawns.remove(player.getUniqueId());
@@ -207,7 +156,7 @@ public class MiniGameService {
                 updateBossBar();
                 return;
             }
-            int assigned = assignTeamForRunningJoin(player);
+            int assigned = teamSelectionService.assignTeamForRunningJoin(player);
             if (assigned < 1) {
                 player.getInventory().clear();
                 player.setGameMode(GameMode.SPECTATOR);
@@ -229,13 +178,13 @@ public class MiniGameService {
             }
             applySelectedKit(player);
             pendingRunningKitChoice.add(uuid);
-            giveKitSelectorItem(player);
+            kitSelectionService.giveKitSelectorItem(player);
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (player.isOnline() && phase == Phase.RUNNING && pendingRunningKitChoice.contains(uuid)) {
                     openKitSelector(player);
                 }
             }, 10L);
-            player.sendMessage("§aИгра уже идет. Вы добавлены в " + coloredTeamName(assigned) + "§a.");
+            player.sendMessage("§aИгра уже идет. Вы добавлены в " + teamSelectionService.coloredTeamName(assigned) + "§a.");
             closeMenuTracking(player);
             updateBossBar();
             return;
@@ -326,7 +275,7 @@ public class MiniGameService {
                 Bukkit.getScheduler().runTask(plugin, () -> teleportToLobby(player));
                 return;
             }
-            Integer teamId = teamByPlayer.get(uuid);
+            Integer teamId = teamSelectionService.getSelectedTeam(player);
             Location teamSpawn = teamId == null ? null : config.getTeamSpawns(currentMapCode).get(teamId);
             player.setGameMode(GameMode.SPECTATOR);
             if (teamSpawn != null) {
@@ -369,7 +318,7 @@ public class MiniGameService {
 
     public Location resolveRespawnLocation(Player player) {
         if (phase == Phase.RUNNING) {
-            Integer teamId = teamByPlayer.get(player.getUniqueId());
+            Integer teamId = teamSelectionService.getSelectedTeam(player);
             Location teamSpawn = teamId == null ? null : config.getTeamSpawns(currentMapCode).get(teamId);
             if (teamSpawn != null) {
                 return teamSpawn.clone();
@@ -378,26 +327,14 @@ public class MiniGameService {
         return config.getLobbySpawn() == null ? player.getLocation() : config.getLobbySpawn().clone();
     }
 
-    public String getPointStatusLine(Player player) {
-        return getPointStatusForPlayer(player);
-    }
-
-    public void openLobbySelector(Player player) {
-        openTeamSelector(player);
-    }
-
     public void openTeamSelector(Player player) {
         if (phase == Phase.RUNNING) {
             player.sendMessage("§cВо время игры выбрать команду нельзя.");
             return;
         }
-        UUID uuid = player.getUniqueId();
-        teamMenuOpen.add(uuid);
-        kitMenuOpen.remove(uuid);
-        Inventory inv = Bukkit.createInventory(null, TEAM_GUI_SIZE, TEAM_GUI_TITLE);
-        inv.setItem(TEAM_ONE_SLOT, buildTeamItem(player, 1, Material.RED_WOOL));
-        inv.setItem(TEAM_TWO_SLOT, buildTeamItem(player, 2, Material.BLUE_WOOL));
-        player.openInventory(inv);
+        kitSelectionService.closeTab(player);
+        mapSelectionService.closeTab(player);
+        teamSelectionService.openTab(player, config);
     }
 
     public void openKitSelector(Player player) {
@@ -405,21 +342,19 @@ public class MiniGameService {
             player.sendMessage("§cВо время игры выбрать кит нельзя.");
             return;
         }
-        UUID uuid = player.getUniqueId();
-        kitMenuOpen.add(uuid);
-        teamMenuOpen.remove(uuid);
-        Inventory inv = Bukkit.createInventory(null, KIT_GUI_SIZE, KIT_GUI_TITLE);
-        KitType selected = kitByPlayer.getOrDefault(player.getUniqueId(), KitType.SWORDSMAN);
-        inv.setItem(KIT_SWORDSMAN_SLOT, kitService.buildKitMenuItem(KitType.SWORDSMAN, selected == KitType.SWORDSMAN));
-        inv.setItem(KIT_ARCHER_SLOT, kitService.buildKitMenuItem(KitType.ARCHER, selected == KitType.ARCHER));
-        inv.setItem(KIT_ENGINEER_SLOT, kitService.buildKitMenuItem(KitType.ENGINEER, selected == KitType.ENGINEER));
-        inv.setItem(KIT_SUPPORT_SLOT, kitService.buildKitMenuItem(KitType.SUPPORT, selected == KitType.SUPPORT));
-        inv.setItem(KIT_CROSSBOW_SLOT, kitService.buildKitMenuItem(KitType.CROSSBOWMAN, selected == KitType.CROSSBOWMAN));
-        inv.setItem(KIT_TANK_SLOT, kitService.buildKitMenuItem(KitType.TANK, selected == KitType.TANK));
-        inv.setItem(KIT_NINJA_SLOT, kitService.buildKitMenuItem(KitType.NINJA, selected == KitType.NINJA));
-        inv.setItem(KIT_TRAPPER_SLOT, kitService.buildKitMenuItem(KitType.TRAPPER, selected == KitType.TRAPPER));
-        inv.setItem(KIT_MEDIC_SLOT, kitService.buildKitMenuItem(KitType.MEDIC, selected == KitType.MEDIC));
-        player.openInventory(inv);
+        teamSelectionService.closeTab(player);
+        mapSelectionService.closeTab(player);
+        kitSelectionService.openTab(player);
+    }
+
+    public void openMapSelector(Player player) {
+        if (phase == Phase.RUNNING) {
+            player.sendMessage("§cВо время игры выбрать карту нельзя.");
+            return;
+        }
+        kitSelectionService.closeTab(player);
+        teamSelectionService.closeTab(player);
+        mapSelectionService.openTab(player);
     }
 
     public void selectTeam(Player player, int teamId) {
@@ -431,38 +366,22 @@ public class MiniGameService {
             player.sendMessage("§cВо время игры смена команды недоступна.");
             return;
         }
-        if (teamId < 1 || teamId > config.getTeamCount()) {
-            player.sendMessage("§cТакой команды нет.");
-            return;
-        }
-        int current = teamByPlayer.getOrDefault(player.getUniqueId(), -1);
-        if (current == teamId) {
-            player.sendMessage("§eВы уже в этой команде.");
-            return;
-        }
-        int onlineInTeam = getOnlineTeamCount(teamId);
-        if (onlineInTeam >= config.getPlayersPerTeam()) {
-            player.sendMessage("§cКоманда заполнена.");
-            return;
-        }
-        if (!canJoinTeamWithBalance(player, teamId)) {
-            player.sendMessage("§cНельзя перейти: нарушится баланс команд.");
-            return;
-        }
-        teamByPlayer.put(player.getUniqueId(), teamId);
-        player.sendMessage("§aВы выбрали команду " + coloredTeamName(teamId) + "§a.");
+        teamSelectionService.selectTeam(player, teamId, config);
         applyPlayerTeamVisual(player);
         openTeamSelector(player);
         updateBossBar();
     }
 
-    public void selectKit(Player player, KitType kitType) {
+    public void selectKitByMenuItem(Player player, ItemStack stack) {
+        KitType type = kitSelectionService.resolveKitTypeByMenuItem(stack);
+        if (type == null) {
+            return;
+        }
         if (phase == Phase.RUNNING && !pendingRunningKitChoice.contains(player.getUniqueId())) {
             player.sendMessage("§cВо время игры смена кита недоступна.");
             return;
         }
-        kitByPlayer.put(player.getUniqueId(), kitType);
-        player.sendMessage("§aВы выбрали кит: §f" + kitType.displayName());
+        kitSelectionService.selectKit(player, type);
         if (phase == Phase.RUNNING) {
             pendingRunningKitChoice.remove(player.getUniqueId());
             preparePlayerForRound(player);
@@ -478,30 +397,13 @@ public class MiniGameService {
         }, 1L);
     }
 
-    public boolean selectKitByMenuItem(Player player, ItemStack stack) {
-        KitType type = kitService.resolveKitTypeByMenuItem(stack);
-        if (type == null) {
-            return false;
-        }
-        selectKit(player, type);
-        return true;
-    }
-
-    public boolean isTeamMenuOpen(Player player) {
-        return player != null && teamMenuOpen.contains(player.getUniqueId());
-    }
-
-    public boolean isKitMenuOpen(Player player) {
-        return player != null && kitMenuOpen.contains(player.getUniqueId());
-    }
-
     public void closeMenuTracking(Player player) {
         if (player == null) {
             return;
         }
-        UUID uuid = player.getUniqueId();
-        teamMenuOpen.remove(uuid);
-        kitMenuOpen.remove(uuid);
+        teamSelectionService.closeTab(player);
+        kitSelectionService.closeTab(player);
+        mapSelectionService.closeTab(player);
     }
 
     public void setLobby(Player player) {
@@ -526,10 +428,6 @@ public class MiniGameService {
         this.config.setAutoPlayersPerTeam(false);
         configService.saveConfig(this.config);
         return true;
-    }
-
-    public boolean isAutoPlayersPerTeam() {
-        return config.isAutoPlayersPerTeam();
     }
 
     public void setAutoPlayersPerTeam(boolean enabled) {
@@ -650,7 +548,7 @@ public class MiniGameService {
             return;
         }
         Block block = state.getBlock();
-        if (phase != Phase.RUNNING || block == null || block.getWorld() == null) {
+        if (phase != Phase.RUNNING) {
             return;
         }
         String key = block.getWorld().getName() + ":" + block.getX() + ":" + block.getY() + ":" + block.getZ();
@@ -659,14 +557,14 @@ public class MiniGameService {
     }
 
     public boolean isProtectedPointBlock(Block block) {
-        if (block == null || block.getWorld() == null) {
+        if (block == null) {
             return false;
         }
         return protectedPointBlocks.contains(blockKey(block));
     }
 
     public boolean isInSpawnProtection(Block block) {
-        if (block == null || block.getWorld() == null) {
+        if (block == null) {
             return false;
         }
         if (isLocationInSpawnProtection(block.getLocation(), config.getLobbySpawn())) {
@@ -683,25 +581,13 @@ public class MiniGameService {
         return false;
     }
 
-    public int getTeamCount() {
-        return config.getTeamCount();
-    }
-
-    public int getPlayersPerTeam() {
-        return config.getPlayersPerTeam();
-    }
-
-    public int getGameDurationMinutes() {
-        return config.getGameDurationMinutes();
-    }
-
     public int getReadyPlayersCount() {
         int count = 0;
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (isObserver(player)) {
                 continue;
             }
-            Integer teamId = teamByPlayer.get(player.getUniqueId());
+            Integer teamId = teamSelectionService.getSelectedTeam(player);
             if (teamId != null && teamId >= 1 && teamId <= config.getTeamCount()) {
                 count++;
             }
@@ -745,11 +631,11 @@ public class MiniGameService {
                 teleportToLobby(player);
                 continue;
             }
-            if (!isSelectorItem(player.getInventory().getItem(8))) {
-                giveSelectorItem(player);
+            if (!teamSelectionService.isTeamSelectorItem(player.getInventory().getItem(8))) {
+                teamSelectionService.giveTeamSelectorItem(player);
             }
-            if (!isKitSelectorItem(player.getInventory().getItem(7))) {
-                giveKitSelectorItem(player);
+            if (!kitSelectionService.isKitSelectorItem(player.getInventory().getItem(7))) {
+                kitSelectionService.giveKitSelectorItem(player);
             }
         }
     }
@@ -831,7 +717,7 @@ public class MiniGameService {
         currentMapCode = resolveNextMap();
         for (int teamId = 1; teamId <= config.getTeamCount(); teamId++) {
             if (!config.getTeamSpawns(currentMapCode).containsKey(teamId)) {
-                cancelCountdown("§cСпавн команды " + coloredTeamName(teamId) + "§c не задан. Используйте /pcta spawn " + teamId);
+                cancelCountdown("§cСпавн команды " + teamSelectionService.coloredTeamName(teamId) + "§c не задан. Используйте /pcta spawn " + teamId);
                 return;
             }
         }
@@ -845,7 +731,7 @@ public class MiniGameService {
             if (isObserver(online)) {
                 continue;
             }
-            Integer teamId = teamByPlayer.get(online.getUniqueId());
+            Integer teamId = teamSelectionService.getSelectedTeam(online);
             if (teamId != null && teamId >= 1 && teamId <= config.getTeamCount()) {
                 participantsByTeam.get(teamId).add(online);
             }
@@ -870,7 +756,6 @@ public class MiniGameService {
         clearCaptureOverlays();
         deployCaptureOverlays();
         gameTimeLeftSeconds = config.getGameDurationMinutes() * 60;
-        tickCounter = 0L;
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (isObserver(player)) {
@@ -879,7 +764,7 @@ public class MiniGameService {
                 teleportToLobby(player);
                 continue;
             }
-            Integer teamId = teamByPlayer.get(player.getUniqueId());
+            Integer teamId = teamSelectionService.getSelectedTeam(player);
             if (teamId == null || teamId < 1 || teamId > config.getTeamCount()) {
                 player.getInventory().clear();
                 player.setGameMode(GameMode.SPECTATOR);
@@ -895,8 +780,8 @@ public class MiniGameService {
             applySelectedKit(player);
         }
 
-        broadcast("§aИгра началась! Цель: захватить город противника или выбить всех врагов.");
-        WorldBorder border = Bukkit.getWorld("world").getWorldBorder();
+        broadcast("§aИгра началась! Карта: %s. Цель: захватить город противника или выбить всех врагов.".formatted(config.getMaps().get(currentMapCode).getDisplayName()));
+        WorldBorder border = Objects.requireNonNull(Bukkit.getWorld("world")).getWorldBorder();
         border.setSize(maps.get(currentMapCode).getWorldBorderSize());
         border.setCenter(maps.get(currentMapCode).getWorldBorderCenter().getX(), maps.get(currentMapCode).getWorldBorderCenter().getZ());
         startRunningTask();
@@ -926,7 +811,6 @@ public class MiniGameService {
         if (phase != Phase.RUNNING) {
             return;
         }
-        tickCounter++;
         gameTimeLeftSeconds--;
         if (gameTimeLeftSeconds <= 0) {
             endByTime();
@@ -950,11 +834,11 @@ public class MiniGameService {
             return true;
         }
         if (aliveTeamOne <= 0) {
-            endGame(BLUE_TEAM, "§aПобеда команды " + coloredTeamName(BLUE_TEAM) + "§a: все Красные выбыли.");
+            endGame(BLUE_TEAM, "§aПобеда команды " + teamSelectionService.coloredTeamName(BLUE_TEAM) + "§a: все Красные выбыли.");
             return true;
         }
         if (aliveTeamTwo <= 0) {
-            endGame(RED_TEAM, "§aПобеда команды " + coloredTeamName(RED_TEAM) + "§a: все Синие выбыли.");
+            endGame(RED_TEAM, "§aПобеда команды " + teamSelectionService.coloredTeamName(RED_TEAM) + "§a: все Синие выбыли.");
             return true;
         }
         return false;
@@ -970,8 +854,8 @@ public class MiniGameService {
             if (center == null) {
                 continue;
             }
-            int t1 = countAliveNear(RED_TEAM, center, CAPTURE_RADIUS);
-            int t2 = countAliveNear(BLUE_TEAM, center, CAPTURE_RADIUS);
+            int t1 = countAliveNear(RED_TEAM, center);
+            int t2 = countAliveNear(BLUE_TEAM, center);
             int diff = t1 - t2;
             if (diff != 0) {
                 point.setProgress(point.progress() + perPlayer * diff);
@@ -980,14 +864,14 @@ public class MiniGameService {
                 point.setProgress(100D);
                 if (point.ownerTeam() != RED_TEAM) {
                     point.setOwnerTeam(RED_TEAM);
-                    Bukkit.broadcastMessage("§aТочка %s захвачена: §cКрасные§a.".formatted(point.displayName()));
+                    broadcast("§aТочка %s захвачена: §cКрасные§a.".formatted(point.displayName()));
                     rewardCaptureForPoint(point, RED_TEAM);
                 }
             } else if (point.progress() <= -100D) {
                 point.setProgress(-100D);
                 if (point.ownerTeam() != BLUE_TEAM) {
                     point.setOwnerTeam(BLUE_TEAM);
-                    Bukkit.broadcastMessage("§aТочка %s захвачена: §9Синие§a.".formatted(point.displayName()));
+                    broadcast("§aТочка %s захвачена: §9Синие§a.".formatted(point.displayName()));
                     rewardCaptureForPoint(point, BLUE_TEAM);
                 }
             } else {
@@ -1004,16 +888,16 @@ public class MiniGameService {
         if (isObserver(one) || isObserver(two)) {
             return false;
         }
-        Integer t1 = teamByPlayer.get(one.getUniqueId());
-        Integer t2 = teamByPlayer.get(two.getUniqueId());
-        return t1 != null && t2 != null && t1.equals(t2);
+        Integer t1 = teamSelectionService.getSelectedTeam(one);
+        Integer t2 = teamSelectionService.getSelectedTeam(two);
+        return t1 != null && t1.equals(t2);
     }
 
     public String getColoredPlayerName(Player player) {
         if (player == null) {
             return "§7Игрок";
         }
-        return teamVisualService.colorizeName(player.getName(), teamByPlayer.get(player.getUniqueId()), RED_TEAM, BLUE_TEAM);
+        return teamVisualService.colorizeName(player.getName(), teamSelectionService.getSelectedTeam(player), RED_TEAM, BLUE_TEAM);
     }
 
     private void sendCaptureActionBars() {
@@ -1026,7 +910,7 @@ public class MiniGameService {
             if (isObserver(player)) {
                 continue;
             }
-            Integer team = teamByPlayer.get(player.getUniqueId());
+            Integer team = teamSelectionService.getSelectedTeam(player);
             if (team != null && phase == Phase.RUNNING) {
                 String extra = getPointStatusForPlayer(player);
                 String bar = "§cКрасные: §f" + owned1 + "/" + total + " (" + p1 + "%) §8| §9Синие: §f" + owned2 + "/" + total + " (" + p2 + "%)" + extra;
@@ -1036,7 +920,7 @@ public class MiniGameService {
     }
 
     private void endGame(int winnerTeam, String message) {
-        WorldBorder border = Bukkit.getWorld("world").getWorldBorder();
+        WorldBorder border = Objects.requireNonNull(Bukkit.getWorld("world")).getWorldBorder();
         border.setSize(10000);
         border.setCenter(0, 0);
         phase = Phase.WAITING;
@@ -1068,7 +952,7 @@ public class MiniGameService {
                 }
                 autoAssignTeamIfNeeded(player);
             }
-            rebalanceTeamsAfterRound();
+            teamSelectionService.rebalanceTeamsAfterRound();
             for (Player player : Bukkit.getOnlinePlayers()) {
                 if (isObserver(player)) {
                     player.getInventory().clear();
@@ -1080,7 +964,7 @@ public class MiniGameService {
                 applyPlayerTeamVisual(player);
                 teleportToLobby(player);
                 if (winnerTeam > 0) {
-                    Integer team = teamByPlayer.get(player.getUniqueId());
+                    Integer team = teamSelectionService.getSelectedTeam(player);
                     if (team != null && team == winnerTeam) {
                         player.sendMessage("§6Вы победили в раунде!");
                     } else if (team != null) {
@@ -1088,7 +972,7 @@ public class MiniGameService {
                     }
                 }
             }
-            Bukkit.broadcastMessage("§aКарта восстановлена в исходное состояние.");
+            broadcast("§aКарта восстановлена в исходное состояние.");
         });
         updateBossBar();
     }
@@ -1102,7 +986,7 @@ public class MiniGameService {
             if (isObserver(player)) {
                 continue;
             }
-            Integer team = teamByPlayer.get(player.getUniqueId());
+            Integer team = teamSelectionService.getSelectedTeam(player);
             if (team != null && team == teamId) {
                 count++;
             }
@@ -1110,12 +994,12 @@ public class MiniGameService {
         return count;
     }
 
-    private int countAliveNear(int teamId, Location center, double radius) {
+    private int countAliveNear(int teamId, Location center) {
         if (center == null || center.getWorld() == null) {
             return 0;
         }
         int count = 0;
-        double radiusSquared = radius * radius;
+        double radiusSquared = MiniGameService.CAPTURE_RADIUS * MiniGameService.CAPTURE_RADIUS;
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!alivePlayers.contains(player.getUniqueId())) {
                 continue;
@@ -1123,7 +1007,7 @@ public class MiniGameService {
             if (isObserver(player)) {
                 continue;
             }
-            Integer team = teamByPlayer.get(player.getUniqueId());
+            Integer team = teamSelectionService.getSelectedTeam(player);
             if (team == null || team != teamId) {
                 continue;
             }
@@ -1138,43 +1022,6 @@ public class MiniGameService {
         return count;
     }
 
-    private int countAliveInChunk(int teamId, String worldName, int chunkX, int chunkZ) {
-        int count = 0;
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (!alivePlayers.contains(player.getUniqueId())) {
-                continue;
-            }
-            if (isObserver(player)) {
-                continue;
-            }
-            Integer team = teamByPlayer.get(player.getUniqueId());
-            if (team == null || team != teamId) {
-                continue;
-            }
-            if (!player.getWorld().getName().equals(worldName)) {
-                continue;
-            }
-            if (player.getLocation().getChunk().getX() == chunkX && player.getLocation().getChunk().getZ() == chunkZ) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private int getOnlineTeamCount(int teamId) {
-        int count = 0;
-        for (Player online : Bukkit.getOnlinePlayers()) {
-            if (isObserver(online)) {
-                continue;
-            }
-            Integer assigned = teamByPlayer.get(online.getUniqueId());
-            if (assigned != null && assigned == teamId) {
-                count++;
-            }
-        }
-        return count;
-    }
-
     private void prepareLobbyPlayer(Player player) {
         player.getInventory().clear();
         player.setGameMode(GameMode.SURVIVAL);
@@ -1182,57 +1029,15 @@ public class MiniGameService {
         player.setFoodLevel(20);
         player.setSaturation(20F);
         player.setFireTicks(0);
-        giveSelectorItem(player);
-        giveKitSelectorItem(player);
+        teamSelectionService.giveTeamSelectorItem(player);
+        kitSelectionService.giveKitSelectorItem(player);
+        mapSelectionService.giveMapSelectorItem(player);
     }
 
     private void teleportToLobby(Player player) {
         if (config.getLobbySpawn() != null) {
             player.teleport(config.getLobbySpawn());
         }
-    }
-
-    private void giveSelectorItem(Player player) {
-        ItemStack selector = new ItemStack(Material.NETHER_STAR);
-        ItemMeta meta = selector.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName("§bВыбор команды");
-            meta.setLore(List.of("§7Нажмите ПКМ в лобби"));
-            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
-            selector.setItemMeta(meta);
-        }
-        player.getInventory().setItem(8, selector);
-    }
-
-    private void giveKitSelectorItem(Player player) {
-        ItemStack selector = new ItemStack(Material.BLAZE_POWDER);
-        ItemMeta meta = selector.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName("§dВыбор кита");
-            meta.setLore(List.of("§7Нажмите ПКМ в лобби"));
-            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
-            selector.setItemMeta(meta);
-        }
-        player.getInventory().setItem(7, selector);
-    }
-
-    private ItemStack buildTeamItem(Player viewer, int teamId, Material material) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            int online = getOnlineTeamCount(teamId);
-            meta.setDisplayName(teamId == RED_TEAM ? "§cКрасные" : "§9Синие");
-            List<String> lore = new ArrayList<>();
-            lore.add("§7Игроков: §f" + online + "/" + config.getPlayersPerTeam());
-            lore.add("§eНажмите для выбора");
-            Integer current = teamByPlayer.get(viewer.getUniqueId());
-            if (current != null && current == teamId) {
-                lore.add("§aВы выбрали эту команду");
-            }
-            meta.setLore(lore);
-            item.setItemMeta(meta);
-        }
-        return item;
     }
 
     private void preparePlayerForRound(Player player) {
@@ -1246,67 +1051,11 @@ public class MiniGameService {
     }
 
     private void applySelectedKit(Player player) {
-        KitType type = kitByPlayer.getOrDefault(player.getUniqueId(), KitType.SWORDSMAN);
-        kitService.applyKit(player, type);
-        if (type == KitType.TANK) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 0, false, false, false));
-        }
-        giveTeamShield(player);
-    }
-
-    private void giveTeamShield(Player player) {
-        Integer teamId = teamByPlayer.get(player.getUniqueId());
-        if (teamId == null) {
-            return;
-        }
-        ItemStack shield = new ItemStack(Material.SHIELD);
-        ItemMeta itemMeta = shield.getItemMeta();
-        if (itemMeta instanceof BlockStateMeta meta) {
-            Banner banner = (Banner) meta.getBlockState();
-            DyeColor teamColor = teamId == RED_TEAM ? DyeColor.RED : DyeColor.BLUE;
-            banner.setBaseColor(teamColor);
-            banner.addPattern(new Pattern(DyeColor.WHITE, PatternType.BORDER));
-            meta.setBlockState(banner);
-            if (teamId == RED_TEAM) {
-                meta.setDisplayName("§cЩит Красных");
-            } else if (teamId == BLUE_TEAM) {
-                meta.setDisplayName("§9Щит Синих");
-            } else {
-                meta.setDisplayName("§fКомандный щит");
-            }
-            meta.setLore(List.of("§7Щит вашей команды"));
-            shield.setItemMeta(meta);
-        }
-        player.getInventory().setItemInOffHand(shield);
-        if (!hasTeamShieldInInventory(player)) {
-            player.getInventory().addItem(shield.clone());
-        }
-        player.updateInventory();
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline() && player.getGameMode() != GameMode.SPECTATOR) {
-                ItemStack off = player.getInventory().getItemInOffHand();
-                if (off == null || off.getType() != Material.SHIELD) {
-                    player.getInventory().setItemInOffHand(shield.clone());
-                    player.updateInventory();
-                }
-            }
-        }, 2L);
-    }
-
-    private boolean hasTeamShieldInInventory(Player player) {
-        if (player == null) {
-            return false;
-        }
-        for (ItemStack stack : player.getInventory().getContents()) {
-            if (stack == null || stack.getType() != Material.SHIELD || !stack.hasItemMeta()) {
-                continue;
-            }
-            ItemMeta meta = stack.getItemMeta();
-            if (meta != null && meta.hasDisplayName() && meta.getDisplayName().contains("Щит")) {
-                return true;
-            }
-        }
-        return false;
+        playerItemsService.giveAllItems(
+                player,
+                kitSelectionService.getSelectedKit(player),
+                teamSelectionService.getSelectedTeam(player)
+        );
     }
 
     private void spawnChunkBorderParticles(World world, CapturePoint state, Particle.DustOptions dust) {
@@ -1393,10 +1142,7 @@ public class MiniGameService {
         if (value < 0D) {
             return 0D;
         }
-        if (value > 1D) {
-            return 1D;
-        }
-        return value;
+        return Math.min(value, 1D);
     }
 
     private String formatTime(int seconds) {
@@ -1833,27 +1579,7 @@ public class MiniGameService {
         if (phase == Phase.RUNNING) {
             return;
         }
-        if (isObserver(player)) {
-            return;
-        }
-        UUID uuid = player.getUniqueId();
-        Integer current = teamByPlayer.get(uuid);
-        if (current != null && current >= 1 && current <= config.getTeamCount()) {
-            return;
-        }
-        int team1 = getOnlineTeamCount(RED_TEAM);
-        int team2 = getOnlineTeamCount(BLUE_TEAM);
-        int assigned = team1 <= team2 ? RED_TEAM : BLUE_TEAM;
-        if (getOnlineTeamCount(assigned) >= config.getPlayersPerTeam()) {
-            int other = assigned == RED_TEAM ? BLUE_TEAM : RED_TEAM;
-            if (getOnlineTeamCount(other) >= config.getPlayersPerTeam()) {
-                player.sendMessage("§cОбе команды уже заполнены. Ожидайте следующую игру.");
-                return;
-            }
-            assigned = other;
-        }
-        teamByPlayer.put(uuid, assigned);
-        player.sendMessage("§aВы автоматически добавлены в команду " + coloredTeamName(assigned) + "§a.");
+        teamSelectionService.autoAssignTeamIfNeeded(player, config);
         applyPlayerTeamVisual(player);
     }
 
@@ -1885,59 +1611,6 @@ public class MiniGameService {
         return dx <= 5.0D && dz <= 5.0D && dy <= 40.0D;
     }
 
-    private boolean canJoinTeamWithBalance(Player player, int targetTeam) {
-        int currentTeam = teamByPlayer.getOrDefault(player.getUniqueId(), -1);
-        if (currentTeam == targetTeam) {
-            return true;
-        }
-        int team1 = getOnlineTeamCount(RED_TEAM);
-        int team2 = getOnlineTeamCount(BLUE_TEAM);
-        if (currentTeam == RED_TEAM) {
-            team1 = Math.max(0, team1 - 1);
-        } else if (currentTeam == BLUE_TEAM) {
-            team2 = Math.max(0, team2 - 1);
-        }
-        if (targetTeam == RED_TEAM) {
-            team1++;
-        } else if (targetTeam == BLUE_TEAM) {
-            team2++;
-        }
-        return Math.abs(team1 - team2) <= 1;
-    }
-
-    private void rebalanceTeamsAfterRound() {
-        List<Player> red = new ArrayList<>();
-        List<Player> blue = new ArrayList<>();
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (isObserver(player)) {
-                continue;
-            }
-            Integer team = teamByPlayer.get(player.getUniqueId());
-            if (team == null) {
-                continue;
-            }
-            if (team == RED_TEAM) {
-                red.add(player);
-            } else if (team == BLUE_TEAM) {
-                blue.add(player);
-            }
-        }
-
-        while (Math.abs(red.size() - blue.size()) > 1) {
-            if (red.size() > blue.size()) {
-                Player moved = red.remove(red.size() - 1);
-                teamByPlayer.put(moved.getUniqueId(), BLUE_TEAM);
-                blue.add(moved);
-                moved.sendMessage("§eБаланс обновлен: вы переведены в команду §9Синие§e.");
-            } else {
-                Player moved = blue.remove(blue.size() - 1);
-                teamByPlayer.put(moved.getUniqueId(), RED_TEAM);
-                red.add(moved);
-                moved.sendMessage("§eБаланс обновлен: вы переведены в команду §cКрасные§e.");
-            }
-        }
-    }
-
     private void rewardCaptureForPoint(CapturePoint state, int teamId) {
         Location center = getPointCenter(state);
         if (center == null) {
@@ -1951,7 +1624,7 @@ public class MiniGameService {
             if (!alivePlayers.contains(player.getUniqueId())) {
                 continue;
             }
-            Integer team = teamByPlayer.get(player.getUniqueId());
+            Integer team = teamSelectionService.getSelectedTeam(player);
             if (team == null || team != teamId) {
                 continue;
             }
@@ -1965,7 +1638,7 @@ public class MiniGameService {
     }
 
     private CapturePoint findPointForPlayer(Player player) {
-        if (player == null || player.getWorld() == null) {
+        if (player == null) {
             return null;
         }
         CapturePoint nearest = null;
@@ -1987,24 +1660,8 @@ public class MiniGameService {
         return nearest;
     }
 
-    private int assignTeamForRunningJoin(Player player) {
-        int team1 = getOnlineTeamCount(RED_TEAM);
-        int team2 = getOnlineTeamCount(BLUE_TEAM);
-        int assigned = team1 <= team2 ? RED_TEAM : BLUE_TEAM;
-        teamByPlayer.put(player.getUniqueId(), assigned);
-        return assigned;
-    }
-
-    private boolean isObserver(Player player) {
-        return player != null && player.isOp();
-    }
-
-    private String coloredTeamName(int teamId) {
-        return teamId == RED_TEAM ? "§cКрасные" : "§9Синие";
-    }
-
     private void applyPlayerTeamVisual(Player player) {
-        Integer teamId = player == null ? null : teamByPlayer.get(player.getUniqueId());
+        Integer teamId = player == null ? null : teamSelectionService.getSelectedTeam(player);
         teamVisualService.applyPlayerTeamVisual(player, teamId, RED_TEAM, BLUE_TEAM);
     }
 
@@ -2017,7 +1674,7 @@ public class MiniGameService {
             return getColoredPlayerName(online);
         }
         String name = Bukkit.getOfflinePlayer(playerId).getName();
-        return teamVisualService.colorizeName(name, teamByPlayer.get(playerId), RED_TEAM, BLUE_TEAM);
+        return teamVisualService.colorizeName(name, teamSelectionService.getSelectedTeam(playerId), RED_TEAM, BLUE_TEAM);
     }
 
     private int nextCapturePointId(String mapCode) {
