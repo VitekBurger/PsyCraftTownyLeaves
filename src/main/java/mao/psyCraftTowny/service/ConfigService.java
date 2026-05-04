@@ -77,6 +77,7 @@ public class ConfigService {
             final var teamSpawns = new ConcurrentHashMap<Integer, Location>();
             final var mapDisplayName = cfg.getString("minigame.maps.%s.display-name".formatted(mapCode), mapCode);
             final var menuItemKey = cfg.getString("minigame.maps.%s.menu-item-key".formatted(mapCode), "");
+            final var mode = GameMap.Mode.valueOf(cfg.getString("minigame.maps.%s.mode".formatted(mapCode), ""));
             final var worldBorderCenter = readLocation(cfg.getConfigurationSection("minigame.maps.%s.world-border-center".formatted(mapCode)));
             final var worldBorderSize = cfg.getDouble("minigame.maps.%s.world-border-size".formatted(mapCode));
             ConfigurationSection teamsSection = cfg.getConfigurationSection("minigame.maps.%s.team-spawns".formatted(mapCode));
@@ -139,7 +140,7 @@ public class ConfigService {
                     capturePoints.put(pointId, point);
                 }
             }
-            maps.put(mapCode, new GameMap(mapCode, mapDisplayName, menuItemKey, worldBorderCenter, worldBorderSize, teamSpawns, capturePoints));
+            maps.put(mapCode, new GameMap(mapCode, mapDisplayName, menuItemKey, worldBorderCenter, worldBorderSize, mode, teamSpawns, capturePoints));
         }
         return maps;
     }
@@ -148,6 +149,7 @@ public class ConfigService {
         maps.forEach((mapCode, gameMap) -> {
             cfg.set("minigame.maps.%s.team-spawns".formatted(mapCode), null);
             cfg.set("minigame.maps.%s.menu-item-key".formatted(mapCode), gameMap.menuItemKey());
+            cfg.set("minigame.maps.%s.mode".formatted(mapCode), gameMap.mode().name());
             cfg.set("minigame.maps.%s.display-name".formatted(mapCode), gameMap.displayName());
             writeLocation(cfg, "minigame.maps.%s.world-border-center".formatted(mapCode), gameMap.worldBorderCenter());
             cfg.set("minigame.maps.%s.world-border-size".formatted(mapCode), gameMap.worldBorderSize());

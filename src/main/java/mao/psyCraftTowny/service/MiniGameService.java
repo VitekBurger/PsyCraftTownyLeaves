@@ -32,7 +32,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static mao.psyCraftTowny.utils.PlayerUtils.isObserver;
@@ -231,23 +230,30 @@ public class MiniGameService {
             return;
         }
         UUID uuid = player.getUniqueId();
-        int left = remainingRespawns.getOrDefault(uuid, config.getRespawnsPerPlayer());
-        if (left <= 0) {
-            alivePlayers.remove(uuid);
-            player.sendMessage("§cУ вас закончились респавны. Вы выбыли до конца игры.");
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                Player online = Bukkit.getPlayer(uuid);
-                if (online != null && online.isOnline() && online.isDead()) {
-                    online.spigot().respawn();
-                }
-            }, 1L);
-            checkAliveWinCondition();
-            updateBossBar();
-            return;
+        final var mode = config.getMaps().get(currentMapCode).mode();
+        final var team = teamSelectionService.getSelectedTeam(player);
+        if (mode == GameMap.Mode.CONQUEST && team == BLUE_TEAM) {
+            player.sendMessage("§eВы возродитесь через " + config.getRespawnDelaySeconds() + " сек. Респавны нападающих в режиме захвата бесконечные");
+        } else {
+            int left = remainingRespawns.getOrDefault(uuid, config.getRespawnsPerPlayer());
+            if (left <= 0) {
+                alivePlayers.remove(uuid);
+                player.sendMessage("§cУ вас закончились респавны. Вы выбыли до конца игры.");
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    Player online = Bukkit.getPlayer(uuid);
+                    if (online != null && online.isOnline() && online.isDead()) {
+                        online.spigot().respawn();
+                    }
+                }, 1L);
+                checkAliveWinCondition();
+                updateBossBar();
+                return;
+            }
+            remainingRespawns.put(uuid, left - 1);
+            player.sendMessage("§eВы возродитесь через " + config.getRespawnDelaySeconds() + " сек. Осталось респавнов: §f" + (left - 1));
         }
-        remainingRespawns.put(uuid, left - 1);
+
         queuedRespawns.add(uuid);
-        player.sendMessage("§eВы возродитесь через " + config.getRespawnDelaySeconds() + " сек. Осталось респавнов: §f" + (left - 1));
         // Убираем экран смерти как в BedWars: принудительный respawn сразу.
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             Player online = Bukkit.getPlayer(uuid);
@@ -482,8 +488,8 @@ public class MiniGameService {
         return id;
     }
 
-    public void addMap(Location location, String code, String itemKey, double worldBorderSize, String displayName) {
-        config.getMaps().put(code, new GameMap(code, displayName, itemKey, location, worldBorderSize, new ConcurrentHashMap<>(), new ConcurrentHashMap<>()));
+    public void addMap(Location location, String code, GameMap.Mode mode, String itemKey, double worldBorderSize, String displayName) {
+        config.getMaps().put(code, new GameMap(code, displayName, itemKey, location, worldBorderSize, mode, new ConcurrentHashMap<>(), new ConcurrentHashMap<>()));
         configService.saveConfig(this.config);
     }
 
@@ -787,13 +793,14 @@ public class MiniGameService {
             player.teleport(config.getTeamSpawns(currentMapCode).get(teamId));
             applySelectedKit(player);
         }
-
-        broadcast("§aИгра началась! Карта: %s. Цель: захватить город противника или выбить всех врагов.".formatted(config.getMaps().get(currentMapCode).displayName()));
+        final var map = config.getMaps().get(currentMapCode);
+        broadcast("§aИгра началась! Карта: %s. %s".formatted(map.displayName(), map.mode().getTargetMessage()));
         WorldBorder border = Objects.requireNonNull(Bukkit.getWorld("world")).getWorldBorder();
         border.setSize(maps.get(currentMapCode).worldBorderSize());
         border.setCenter(maps.get(currentMapCode).worldBorderCenter().getX(), maps.get(currentMapCode).worldBorderCenter().getZ());
         startRunningTask();
         updateBossBar();
+        mapSelectionService.clearVotes();
     }
 
     private void startRunningTask() {
@@ -841,20 +848,43 @@ public class MiniGameService {
     }
 
     private void tickCapturePoints() {
-        if (config.getCapturePoints(currentMapCode).isEmpty()) {
+        final var map = config.getMaps().get(currentMapCode);
+        if (map.mode() == GameMap.Mode.TDM || map.capturePoints().isEmpty()) {
             return;
         }
         double perPlayer = config.getCapturePercentPerPlayerPerSecond();
         for (CapturePoint point : config.getCapturePoints(currentMapCode).values()) {
+            if (map.mode() == GameMap.Mode.CONQUEST
+                    && point.ownerTeam() == BLUE_TEAM) {
+                // Захваченная точка в режиме "Захват" навсегда остаётся за нападающими (синими)
+                continue;
+            }
             Location center = getPointCenter(point);
             if (center == null) {
                 continue;
             }
             int t1 = countAliveNear(RED_TEAM, center);
             int t2 = countAliveNear(BLUE_TEAM, center);
-            int diff = t1 - t2;
-            if (diff != 0) {
-                point.setProgress(point.progress() + perPlayer * diff);
+            int redTeamProgressDiff = t1 - t2;
+            if (redTeamProgressDiff != 0) {
+                point.setProgress(point.progress() + perPlayer * redTeamProgressDiff);
+            }
+            if (map.mode() == GameMap.Mode.CONQUEST && point.progress() < 0.0D) {
+                final var allPreviousPointsCaptured = map.capturePoints().values().stream()
+                        .filter(aPoint -> aPoint.id() < point.id())
+                        .allMatch(aPoint -> aPoint.ownerTeam() == BLUE_TEAM);
+                if (!allPreviousPointsCaptured) {
+                    // Синие могут захватывать точки только в последовательности их создания на карте
+                    point.setProgress(0.0D);
+                    updateCaptureOverlay(point);
+                    continue;
+                }
+            }
+            if (map.mode() == GameMap.Mode.CONQUEST && point.progress() > 0.0D) {
+                // Красные не могут захватить точку
+                point.setProgress(0.0D);
+                updateCaptureOverlay(point);
+                continue;
             }
             if (point.progress() >= 100D) {
                 point.setProgress(100D);

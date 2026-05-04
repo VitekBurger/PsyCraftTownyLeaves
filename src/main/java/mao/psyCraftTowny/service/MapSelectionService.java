@@ -63,14 +63,17 @@ public class MapSelectionService {
         mapMenuOpen.add(player.getUniqueId());
         Inventory inv = Bukkit.createInventory(null, MAP_GUI_SIZE, MAP_GUI_TITLE);
         final var slot = new AtomicInteger(10);
+        final var votesMap = calculateVotes(config.getMaps().keySet().stream().toList());
         config.getMaps().forEach((mapCode, gameMap) -> {
             if (slot.get() < 17) {
                 final var item = getItem(gameMap.menuItemKey());
                 ItemMeta meta = item.getItemMeta();
                 if (meta != null) {
-                    meta.setDisplayName("§fКарта: " + gameMap.displayName());
+                    meta.setDisplayName("§fКарта: %s".formatted(gameMap.displayName()));
                     List<String> lore = new ArrayList<>();
                     lore.add("§eНажмите для выбора");
+                    lore.add("Режим: %s".formatted(gameMap.mode().getRuName()));
+                    lore.add("Голосов: %d".formatted(votesMap.getOrDefault(mapCode, 0)));
                     if (Objects.equals(playerMapVotesMap.get(player.getUniqueId()), mapCode)) {
                         lore.add("§aВы выбрали эту карту");
                     }
@@ -91,18 +94,22 @@ public class MapSelectionService {
 
     public void selectMap(Player player, ItemStack currentItem, Config config) {
         final var optionalSelectedMap = config.getMaps().values().stream()
-                .filter(gameMap -> Objects.equals(getItem(gameMap.menuItemKey()), currentItem))
+                .filter(gameMap -> Objects.equals(gameMap.menuItemKey(), currentItem.getType().getKey().toString()))
                 .findFirst();
         if (optionalSelectedMap.isEmpty()) {
             return;
         }
         final var selectedMap = optionalSelectedMap.get();
         playerMapVotesMap.put(player.getUniqueId(), selectedMap.code());
+        openTab(player, config);
+    }
+
+    public void clearVotes() {
+        playerMapVotesMap.clear();
     }
 
     public String resolveNextMap(Config config) {
-        final var codes = config.getMaps().keySet().stream()
-                .toList();
+        final var codes = config.getMaps().keySet().stream().toList();
         if (codes.isEmpty()) {
             return null;
         }
@@ -112,13 +119,7 @@ public class MapSelectionService {
         if (playerMapVotesMap.isEmpty()) {
             return getRandomMapCode(codes);
         }
-        final var votes = new HashMap<String, Integer>();
-        codes.forEach(code -> votes.put(code, 0));
-        for (String votedCode : playerMapVotesMap.values()) {
-            if (votes.containsKey(votedCode)) {
-                votes.put(votedCode, votes.get(votedCode) + 1);
-            }
-        }
+        final var votes = calculateVotes(codes);
         int maxVotes = 0;
         for (int count : votes.values()) {
             if (count > maxVotes) {
@@ -142,6 +143,17 @@ public class MapSelectionService {
         }
 
         return getRandomMapCode(winnerCandidates);
+    }
+
+    private HashMap<String, Integer> calculateVotes(List<String> codes) {
+        final var votes = new HashMap<String, Integer>();
+        codes.forEach(code -> votes.put(code, 0));
+        for (String votedCode : playerMapVotesMap.values()) {
+            if (votes.containsKey(votedCode)) {
+                votes.put(votedCode, votes.get(votedCode) + 1);
+            }
+        }
+        return votes;
     }
 
     private ItemStack getItem(String key) {
