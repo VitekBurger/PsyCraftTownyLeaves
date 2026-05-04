@@ -87,7 +87,7 @@ public class Config {
     public Map<Integer, Location> getTeamSpawns(String mapCode) {
         final var map = maps.get(mapCode);
         if (map != null) {
-            return map.getTeamSpawns();
+            return map.teamSpawns();
         }
         return new ConcurrentHashMap<>();
     }
@@ -95,7 +95,7 @@ public class Config {
     public Map<Integer, CapturePoint> getCapturePoints(String mapCode) {
         final var map = maps.get(mapCode);
         if (map != null) {
-            return map.getCapturePoints();
+            return map.capturePoints();
         }
         return new ConcurrentHashMap<>();
     }

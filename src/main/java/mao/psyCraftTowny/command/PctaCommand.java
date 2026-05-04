@@ -1,6 +1,9 @@
 package mao.psyCraftTowny.command;
 
 import mao.psyCraftTowny.service.MiniGameService;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -131,13 +134,18 @@ public class PctaCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 if (args.length < 5) {
-                    sender.sendMessage("§eИспользование: /pcta map add <code> <world_border_size> <display_name>");
+                    sender.sendMessage("§eИспользование: /pcta map add <menu_item_key> <code> <world_border_size> <display_name>");
                     return true;
                 }
-                final var code = args[2].toLowerCase(Locale.ROOT);
-                final var worldBorderSize = Double.parseDouble(args[3]);
-                final var displayName = String.join(" ", Arrays.copyOfRange(args, 4, args.length));
-                miniGameService.addMap(player.getLocation(), code, worldBorderSize, displayName);
+                final var menuItemKey = args[2];
+                if (!getItemKeys().contains(menuItemKey)) {
+                    sender.sendMessage("§cПредмет для меню с таким названием не найден!");
+                    return true;
+                }
+                final var code = args[3].toLowerCase(Locale.ROOT);
+                final var worldBorderSize = Double.parseDouble(args[4]);
+                final var displayName = String.join(" ", Arrays.copyOfRange(args, 5, args.length));
+                miniGameService.addMap(player.getLocation(), code, menuItemKey, worldBorderSize, displayName);
                 sender.sendMessage("§aТочка захвата добавлена: code §f#" + code + "§a.");
                 return true;
             }
@@ -300,7 +308,7 @@ public class PctaCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/pcta autosize <on|off> §7- автообновление размера команды");
         sender.sendMessage("§e/pcta spawn <map_code> <command_id> §7- поставить спавн команды");
         sender.sendMessage("§e/pcta time 20 §7- время игры в минутах");
-        sender.sendMessage("§e/pcta map add <map_code> <world_border_size> <display_name> §7- Добавить карту с кодом и именем с центром в текущей позиции и указанным размером");
+        sender.sendMessage("§e/pcta map add <menu_item_key> <map_code> <world_border_size> <display_name> §7- Добавить карту с кодом и именем с центром в текущей позиции и указанным размером");
         sender.sendMessage("§e/pcta map remove <map_code> §7- удалить карту по code");
         sender.sendMessage("§e/pcta map list §7- список карт");
         sender.sendMessage("§e/pcta point add <map_code> <point_display_name> §7- добавить точку захвата в текущем блоке");
@@ -349,6 +357,12 @@ public class PctaCommand implements CommandExecutor, TabCompleter {
                     miniGameService.getMapCodes()
             );
         }
+        if (args.length == 3 && arg0.equals("map") && arg1.equals("add")) {
+            return getCompletions(
+                    arg2,
+                    getItemKeys()
+            );
+        }
         if (args.length == 2 && "autosize".equals(arg0)) {
             return getCompletions(
                     arg1,
@@ -380,5 +394,17 @@ public class PctaCommand implements CommandExecutor, TabCompleter {
         return possibleCompletions.stream()
                 .filter(completion -> completion.startsWith(typed))
                 .toList();
+    }
+
+    private List<String> getItemKeys() {
+        List<String> keys = new ArrayList<>();
+
+        for (Material material : Registry.MATERIAL) {
+            if (!material.isItem()) continue;
+
+            NamespacedKey key = material.getKey();
+            keys.add(key.toString());
+        }
+        return keys;
     }
 }

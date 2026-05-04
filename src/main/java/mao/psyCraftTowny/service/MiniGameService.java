@@ -354,7 +354,7 @@ public class MiniGameService {
         }
         kitSelectionService.closeTab(player);
         teamSelectionService.closeTab(player);
-        mapSelectionService.openTab(player);
+        mapSelectionService.openTab(player, config);
     }
 
     public void selectTeam(Player player, int teamId) {
@@ -395,6 +395,14 @@ public class MiniGameService {
                 openKitSelector(player);
             }
         }, 1L);
+    }
+
+    public void selectMapByMenuItem(Player player, ItemStack stack) {
+        if (phase == Phase.RUNNING) {
+            player.sendMessage("§cВо время игры голосование за карту недоступно.");
+            return;
+        }
+        mapSelectionService.selectMap(player, stack, config);
     }
 
     public void closeMenuTracking(Player player) {
@@ -474,8 +482,8 @@ public class MiniGameService {
         return id;
     }
 
-    public void addMap(Location location, String code, double worldBorderSize, String displayName) {
-        config.getMaps().put(code, new GameMap(code, displayName, location, worldBorderSize, new ConcurrentHashMap<>(), new ConcurrentHashMap<>()));
+    public void addMap(Location location, String code, String itemKey, double worldBorderSize, String displayName) {
+        config.getMaps().put(code, new GameMap(code, displayName, itemKey, location, worldBorderSize, new ConcurrentHashMap<>(), new ConcurrentHashMap<>()));
         configService.saveConfig(this.config);
     }
 
@@ -528,10 +536,10 @@ public class MiniGameService {
 
     public List<String> describeMap() {
         List<GameMap> maps = new ArrayList<>(config.getMaps().values());
-        maps.sort(Comparator.comparing(GameMap::getCode, Comparator.naturalOrder()));
+        maps.sort(Comparator.comparing(GameMap::code, Comparator.naturalOrder()));
         List<String> out = new ArrayList<>();
         for (GameMap map : maps) {
-            out.add("§7#" + map.getCode() + " §f" + map.getDisplayName() + " §7(" + map.getWorldBorderCenter().getX() + ", " + map.getWorldBorderCenter().getZ() + " размер = " + map.getWorldBorderSize() + ")");
+            out.add("§7#" + map.code() + " §f" + map.displayName() + " §7(" + map.worldBorderCenter().getX() + ", " + map.worldBorderCenter().getZ() + " размер = " + map.worldBorderSize() + ")");
         }
         return out;
     }
@@ -714,7 +722,7 @@ public class MiniGameService {
             cancelCountdown("§cКарты не созданы. Используйте /pcta map");
             return;
         }
-        currentMapCode = resolveNextMap();
+        currentMapCode = mapSelectionService.resolveNextMap(config);
         for (int teamId = 1; teamId <= config.getTeamCount(); teamId++) {
             if (!config.getTeamSpawns(currentMapCode).containsKey(teamId)) {
                 cancelCountdown("§cСпавн команды " + teamSelectionService.coloredTeamName(teamId) + "§c не задан. Используйте /pcta spawn " + teamId);
@@ -780,24 +788,12 @@ public class MiniGameService {
             applySelectedKit(player);
         }
 
-        broadcast("§aИгра началась! Карта: %s. Цель: захватить город противника или выбить всех врагов.".formatted(config.getMaps().get(currentMapCode).getDisplayName()));
+        broadcast("§aИгра началась! Карта: %s. Цель: захватить город противника или выбить всех врагов.".formatted(config.getMaps().get(currentMapCode).displayName()));
         WorldBorder border = Objects.requireNonNull(Bukkit.getWorld("world")).getWorldBorder();
-        border.setSize(maps.get(currentMapCode).getWorldBorderSize());
-        border.setCenter(maps.get(currentMapCode).getWorldBorderCenter().getX(), maps.get(currentMapCode).getWorldBorderCenter().getZ());
+        border.setSize(maps.get(currentMapCode).worldBorderSize());
+        border.setCenter(maps.get(currentMapCode).worldBorderCenter().getX(), maps.get(currentMapCode).worldBorderCenter().getZ());
         startRunningTask();
         updateBossBar();
-    }
-
-    private String resolveNextMap() {
-        final var codes = config.getMaps().keySet().stream()
-                .toList();
-        if (codes.isEmpty()) {
-            return null;
-        }
-        if (codes.size() == 1) {
-            return codes.getFirst();
-        }
-        return codes.get(ThreadLocalRandom.current().nextInt(codes.size()));
     }
 
     private void startRunningTask() {

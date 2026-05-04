@@ -238,7 +238,7 @@ public class MiniGameListener implements Listener {
             return;
         }
         if (mapGui && event.getCurrentItem() != null) {
-            mapSelectionService.selectMapByMenuItem(player, event.getCurrentItem());
+            miniGameService.selectMapByMenuItem(player, event.getCurrentItem());
         }
     }
 
