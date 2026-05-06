@@ -44,10 +44,23 @@ public class PlayerItemsService {
             case TRAPPER -> applyTrapperKit(player);
             case MEDIC -> applyMedicKit(player);
         }
-        if (type == KitType.TANK) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 0, false, false, false));
+
+        if (type == KitType.CROSSBOWMAN) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, Integer.MAX_VALUE, 0, false, false, false));
         }
-        giveTeamShield(player, teamId);
+
+        if (shouldHaveShield(type)) {
+            giveTeamShield(player, teamId);
+        } else {
+            player.getInventory().setItemInOffHand(null);
+        }
+    }
+
+    private boolean shouldHaveShield(KitType type) {
+        return switch (type) {
+            case ARCHER -> false;
+            default -> true;
+        };
     }
 
     private void applySwordsmanKit(Player player) {
@@ -79,7 +92,7 @@ public class PlayerItemsService {
     }
 
     private void applyEngineerKit(Player player) {
-        player.getInventory().addItem(new ItemStack(Material.STONE_AXE, 1));
+        player.getInventory().addItem(new ItemStack(Material.STONE_SWORD, 1));
         player.getInventory().addItem(new ItemStack(Material.DIAMOND_PICKAXE, 1));
         player.getInventory().addItem(new ItemStack(Material.TNT, 10));
         player.getInventory().addItem(new ItemStack(Material.FLINT_AND_STEEL, 1));
@@ -92,6 +105,7 @@ public class PlayerItemsService {
         player.getInventory().addItem(new ItemStack(Material.OAK_BUTTON, 16));
         player.getInventory().addItem(new ItemStack(Material.LEVER, 16));
         player.getInventory().addItem(new ItemStack(Material.REDSTONE, 64));
+        player.getInventory().addItem(new ItemStack(Material.REPEATER, 16));
         player.getInventory().addItem(new ItemStack(Material.PISTON, 16));
         player.getInventory().addItem(new ItemStack(Material.STICKY_PISTON, 16));
         player.getInventory().addItem(new ItemStack(Material.OBSERVER, 12));
@@ -107,8 +121,7 @@ public class PlayerItemsService {
         player.getInventory().addItem(new ItemStack(Material.STONE_SWORD, 1));
         player.getInventory().addItem(new ItemStack(Material.WOODEN_PICKAXE, 1));
         player.getInventory().addItem(new ItemStack(Material.COBBLESTONE, 24));
-        player.getInventory().addItem(new ItemStack(Material.GOLDEN_APPLE, 5));
-        player.getInventory().addItem(createCustomPotion("§aЗелье отравления II", PotionEffectType.POISON, 20 * 22, 1, 2));
+        player.getInventory().addItem(createCustomPotion("§aЗелье отравления I", PotionEffectType.POISON, 20 * 22, 0, 2));
         player.getInventory().addItem(createCustomPotion("§cЗелье моментального урона I", PotionEffectType.INSTANT_DAMAGE, 1, 0, 2));
         player.getInventory().addItem(createCustomPotion("§7Зелье слабости", PotionEffectType.WEAKNESS, 20 * 90, 0, 2));
         player.getInventory().addItem(createCustomPotion("§6Зелье огнестойкости", PotionEffectType.FIRE_RESISTANCE, 20 * 180, 0, 2));
@@ -122,7 +135,8 @@ public class PlayerItemsService {
     private void applyCrossbowKit(Player player) {
         player.getInventory().addItem(new ItemStack(Material.CROSSBOW, 1));
         player.getInventory().addItem(new ItemStack(Material.ARROW, 96));
-        player.getInventory().addItem(createCrossbowFireworks(16));
+        player.getInventory().addItem(createCrossbowFireworks(16, 1));
+        player.getInventory().addItem(createCrossbowFireworks(1, 5)); // Ult
         player.getInventory().addItem(new ItemStack(Material.WOODEN_SWORD, 1));
         player.getInventory().addItem(new ItemStack(Material.WOODEN_PICKAXE, 1));
         player.getInventory().addItem(new ItemStack(Material.COBBLESTONE, 20));
@@ -142,6 +156,13 @@ public class PlayerItemsService {
         player.getInventory().setChestplate(new ItemStack(Material.DIAMOND_CHESTPLATE));
         player.getInventory().setLeggings(new ItemStack(Material.IRON_LEGGINGS));
         player.getInventory().setBoots(new ItemStack(Material.DIAMOND_BOOTS));
+        
+        // Ультра-замедление (в 2.5 раза медленнее обычного: 0.2 / 2.5 = 0.08)
+        player.setWalkSpeed(0.08F);
+        player.setSprinting(false);
+        
+        // Сопротивление II (amplifier 1)
+        player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 1000000, 1, false, false, false));
     }
 
     private void applyNinjaKit(Player player) {
@@ -159,9 +180,14 @@ public class PlayerItemsService {
     private void applyTrapperKit(Player player) {
         player.getInventory().addItem(new ItemStack(Material.STONE_SWORD, 1));
         player.getInventory().addItem(new ItemStack(Material.WOODEN_PICKAXE, 1));
+        player.getInventory().addItem(new ItemStack(Material.FISHING_ROD, 1));
         player.getInventory().addItem(new ItemStack(Material.COBWEB, 20));
         player.getInventory().addItem(new ItemStack(Material.TRIPWIRE_HOOK, 12));
         player.getInventory().addItem(new ItemStack(Material.STRING, 32));
+        player.getInventory().addItem(new ItemStack(Material.STONE_PRESSURE_PLATE, 16));
+        player.getInventory().addItem(new ItemStack(Material.WIND_CHARGE, 10));
+        player.getInventory().addItem(new ItemStack(Material.REDSTONE, 32));
+        player.getInventory().addItem(createCustomPotion("§8Зелье слепоты", PotionEffectType.BLINDNESS, 20 * 10, 0, 1));
         player.getInventory().addItem(new ItemStack(Material.COBBLESTONE, 24));
         player.getInventory().addItem(new ItemStack(Material.COOKED_BEEF, 32));
         player.getInventory().setHelmet(new ItemStack(Material.CHAINMAIL_HELMET));
@@ -171,15 +197,15 @@ public class PlayerItemsService {
     }
 
     private void applyMedicKit(Player player) {
-        player.getInventory().addItem(new ItemStack(Material.WOODEN_SWORD, 1));
+        player.getInventory().addItem(new ItemStack(Material.STONE_SWORD, 1));
         player.getInventory().addItem(new ItemStack(Material.WOODEN_PICKAXE, 1));
         player.getInventory().addItem(new ItemStack(Material.COBBLESTONE, 20));
-        player.getInventory().addItem(new ItemStack(Material.GOLDEN_APPLE, 3));
-        player.getInventory().addItem(createCustomPotion("§dЗелье моментального исцеления", PotionEffectType.INSTANT_HEALTH, 1, 0, 3));
-        player.getInventory().addItem(createCustomPotion("§aЗелье регенерации", PotionEffectType.REGENERATION, 20 * 45, 0, 3));
+        player.getInventory().addItem(new ItemStack(Material.GOLDEN_APPLE, 5));
+        player.getInventory().addItem(createCustomLingeringPotion("§dОседающее зелье исцеления", PotionEffectType.INSTANT_HEALTH, 1, 0, 5));
+        player.getInventory().addItem(createCustomLingeringPotion("§aОседающее зелье регенерации", PotionEffectType.REGENERATION, 20 * 15, 0, 3));
         player.getInventory().addItem(new ItemStack(Material.COOKED_BEEF, 40));
         player.getInventory().setHelmet(new ItemStack(Material.CHAINMAIL_HELMET));
-        player.getInventory().setChestplate(new ItemStack(Material.CHAINMAIL_CHESTPLATE));
+        player.getInventory().setChestplate(new ItemStack(Material.IRON_CHESTPLATE));
         player.getInventory().setLeggings(new ItemStack(Material.CHAINMAIL_LEGGINGS));
         player.getInventory().setBoots(new ItemStack(Material.LEATHER_BOOTS));
     }
@@ -195,18 +221,32 @@ public class PlayerItemsService {
         return item;
     }
 
-    private ItemStack createCrossbowFireworks(int amount) {
+    private ItemStack createCustomLingeringPotion(String name, PotionEffectType type, int durationTicks, int amplifier, int amount) {
+        ItemStack item = new ItemStack(Material.LINGERING_POTION, amount);
+        ItemMeta rawMeta = item.getItemMeta();
+        if (rawMeta instanceof PotionMeta meta) {
+            meta.setDisplayName(name);
+            meta.addCustomEffect(new PotionEffect(type, durationTicks, amplifier), true);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    private ItemStack createCrossbowFireworks(int amount, int fireworkAmount) {
         ItemStack item = new ItemStack(Material.FIREWORK_ROCKET, amount);
         ItemMeta rawMeta = item.getItemMeta();
         if (rawMeta instanceof FireworkMeta meta) {
             meta.setPower(1);
-            meta.addEffect(FireworkEffect.builder()
+            FireworkEffect effect = FireworkEffect.builder()
                     .with(FireworkEffect.Type.BALL_LARGE)
                     .withColor(Color.ORANGE, Color.RED)
                     .withFade(Color.YELLOW)
                     .trail(true)
                     .flicker(true)
-                    .build());
+                    .build();
+            for (int i = 0; i < fireworkAmount; i++) {
+                meta.addEffect(effect);
+            }
             item.setItemMeta(meta);
         }
         return item;

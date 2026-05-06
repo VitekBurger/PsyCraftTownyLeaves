@@ -1,11 +1,15 @@
 package mao.psyCraftTowny.listener;
 
+import mao.psyCraftTowny.model.KitType;
 import mao.psyCraftTowny.service.KitSelectionService;
 import mao.psyCraftTowny.service.MapSelectionService;
 import mao.psyCraftTowny.service.MiniGameService;
 import mao.psyCraftTowny.service.TeamSelectionService;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.Material;
+import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
@@ -19,28 +23,42 @@ import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.entity.AreaEffectCloudApplyEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.PotionSplashEvent;
+import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
+import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
+import org.bukkit.util.Vector;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 public class MiniGameListener implements Listener {
     private final MiniGameService miniGameService;
     private final TeamSelectionService teamSelectionService;
     private final MapSelectionService mapSelectionService;
     private final KitSelectionService kitSelectionService;
+    private final Map<UUID, Long> medicFeedingCooldown = new HashMap<>();
 
     public MiniGameListener(MiniGameService miniGameService, TeamSelectionService teamSelectionService, MapSelectionService mapSelectionService, KitSelectionService kitSelectionService) {
         this.miniGameService = miniGameService;
@@ -51,7 +69,8 @@ public class MiniGameListener implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        miniGameService.handlePlayerJoin(event.getPlayer());
+        Player player = event.getPlayer();
+        miniGameService.handlePlayerJoin(player);
     }
 
     @EventHandler
@@ -87,6 +106,12 @@ public class MiniGameListener implements Listener {
             return;
         }
         miniGameService.recordBlockState(event.getBlockReplacedState());
+        
+        // If placing a tall block, record the block above too
+        Material placedType = event.getBlockPlaced().getType();
+        if (placedType.name().contains("DOOR") || placedType == Material.TALL_GRASS || placedType == Material.LARGE_FERN || placedType.name().contains("BANNER")) {
+            miniGameService.recordBlockState(event.getBlock().getRelative(org.bukkit.block.BlockFace.UP).getState());
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -95,7 +120,7 @@ public class MiniGameListener implements Listener {
             event.setCancelled(true);
             return;
         }
-        miniGameService.recordBlockState(event.getBlock().getState());
+        miniGameService.recordBlockChange(event.getBlock());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -158,15 +183,6 @@ public class MiniGameListener implements Listener {
             return;
         }
         miniGameService.recordBlockState(event.getBlock().getState());
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onFluidFlow(BlockFromToEvent event) {
-        if (miniGameService.isProtectedPointBlock(event.getToBlock()) || miniGameService.isInSpawnProtection(event.getToBlock())) {
-            event.setCancelled(true);
-            return;
-        }
-        miniGameService.recordBlockState(event.getToBlock().getState());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -238,7 +254,7 @@ public class MiniGameListener implements Listener {
             return;
         }
         if (mapGui && event.getCurrentItem() != null) {
-            miniGameService.selectMapByMenuItem(player, event.getCurrentItem());
+            miniGameService.selectMapOrModeByMenuItem(player, event.getCurrentItem());
         }
     }
 
@@ -264,6 +280,27 @@ public class MiniGameListener implements Listener {
             return;
         }
 
+        // Medic feeding logic
+        if (miniGameService.areTeammates(damager, victim) && kitSelectionService.getSelectedKit(damager) == KitType.MEDIC) {
+            ItemStack item = damager.getInventory().getItemInMainHand();
+            if (item.getType() == Material.GOLDEN_APPLE) {
+                long now = System.currentTimeMillis();
+                long last = medicFeedingCooldown.getOrDefault(damager.getUniqueId(), 0L);
+                if (now - last >= 5000) {
+                    if (victim.getHealth() < victim.getMaxHealth()) {
+                        event.setCancelled(true);
+                        item.setAmount(item.getAmount() - 1);
+                        victim.setHealth(Math.min(victim.getMaxHealth(), victim.getHealth() + 4.0D)); // 2 hearts
+                        victim.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 100, 1));
+                        victim.sendMessage("§aМедик " + damager.getName() + " покормил вас золотым яблоком!");
+                        damager.sendMessage("§aВы покормили " + victim.getName() + " золотым яблоком!");
+                        medicFeedingCooldown.put(damager.getUniqueId(), now);
+                        return;
+                    }
+                }
+            }
+        }
+
         if (miniGameService.areTeammates(damager, victim)) {
             event.setCancelled(true);
             damager.sendActionBar("§cНельзя бить союзников.");
@@ -276,6 +313,165 @@ public class MiniGameListener implements Listener {
                 damager.sendActionBar("§7Урон отключен до старта игры.");
             }
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onTankSprint(PlayerToggleSprintEvent event) {
+        Player player = event.getPlayer();
+        if (kitSelectionService.getSelectedKit(player) == KitType.TANK && event.isSprinting()) {
+            event.setCancelled(true);
+            player.setSprinting(false);
+            player.setWalkSpeed(0.08F);
+        }
+    }
+
+    @EventHandler
+    public void onTankMove(PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+        if (kitSelectionService.getSelectedKit(player) != KitType.TANK) return;
+
+        // Если танк в воздухе (прыгнул), сбрасываем его горизонтальную инерцию
+        if (!player.isOnGround() && event.getFrom().getY() < event.getTo().getY()) {
+            Vector vec = player.getVelocity();
+            if (vec.getX() != 0 || vec.getZ() != 0) {
+                player.setVelocity(new Vector(vec.getX() * 0.5, vec.getY(), vec.getZ() * 0.5));
+            }
+        }
+        
+        // Постоянно форсим скорость, если вдруг она сбросилась
+        if (player.getWalkSpeed() != 0.08F) {
+            player.setWalkSpeed(0.08F);
+        }
+    }
+
+    @EventHandler
+    public void onCraft(CraftItemEvent event) {
+        if (event.getWhoClicked().getGameMode() != GameMode.CREATIVE) {
+            event.setCancelled(true);
+            event.getWhoClicked().sendMessage("§cКрафт запрещен!");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFluidFlow(BlockFromToEvent event) {
+        if (event.getBlock().getType() == Material.LAVA || event.getBlock().getType() == Material.LAVA_CAULDRON) {
+            event.setCancelled(true);
+            return;
+        }
+        if (miniGameService.isProtectedPointBlock(event.getToBlock()) || miniGameService.isInSpawnProtection(event.getToBlock())) {
+            event.setCancelled(true);
+            return;
+        }
+        miniGameService.recordBlockState(event.getToBlock().getState());
+    }
+
+    @EventHandler
+    public void onFireworkDamage(EntityDamageByEntityEvent event) {
+        if (event.getDamager() instanceof Firework firework && firework.getShooter() instanceof Player shooter) {
+            if (kitSelectionService.getSelectedKit(shooter) == KitType.CROSSBOWMAN) {
+                if (shooter.hasPotionEffect(PotionEffectType.STRENGTH)) {
+                    event.setDamage(event.getDamage() * 1.5);
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onFishing(PlayerFishEvent event) {
+        if (event.getState() != PlayerFishEvent.State.CAUGHT_ENTITY) return;
+        if (!(event.getCaught() instanceof Player victim)) return;
+        
+        Player fisher = event.getPlayer();
+        boolean isTeammate = miniGameService.areTeammates(fisher, victim);
+        
+        // Сильное замедление только для врагов
+        if (!isTeammate) {
+            victim.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 4, false, false, true), true); // Замедление 5 на 4 сек (force: true)
+            victim.sendMessage("§cВас поймали удочкой!");
+        }
+        
+        // Увеличение силы притягивания (работает на всех)
+        Bukkit.getScheduler().runTaskLater(miniGameService.getPlugin(), () -> {
+            if (victim.isOnline() && fisher.isOnline()) {
+                Vector direction = fisher.getLocation().toVector().subtract(victim.getLocation().toVector()).normalize();
+                double strength = isTeammate ? 1.8D : 2.8D; // Врагов тянет сильнее
+                victim.setVelocity(direction.multiply(strength).setY(0.6));
+            }
+        }, 1L);
+    }
+
+    @EventHandler
+    public void onPotionSplash(PotionSplashEvent event) {
+        if (!(event.getPotion().getShooter() instanceof Player shooter)) {
+            return;
+        }
+
+        boolean hasHarmful = false;
+        boolean hasBeneficial = false;
+        for (PotionEffect effect : event.getPotion().getEffects()) {
+            if (effect.getType().getCategory() == org.bukkit.potion.PotionEffectTypeCategory.HARMFUL) {
+                hasHarmful = true;
+            } else if (effect.getType().getCategory() == org.bukkit.potion.PotionEffectTypeCategory.BENEFICIAL) {
+                hasBeneficial = true;
+            }
+        }
+
+        for (org.bukkit.entity.LivingEntity entity : event.getAffectedEntities()) {
+            if (!(entity instanceof Player victim)) {
+                continue;
+            }
+
+            boolean isTeammate = miniGameService.areTeammates(shooter, victim);
+            if (isTeammate) {
+                // If shooter and victim are teammates, don't apply harmful effects
+                if (hasHarmful && !hasBeneficial) {
+                    event.setIntensity(entity, 0.0D);
+                }
+            } else {
+                // If shooter and victim are enemies, don't apply beneficial effects
+                if (hasBeneficial && !hasHarmful) {
+                    event.setIntensity(entity, 0.0D);
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onCloudApply(AreaEffectCloudApplyEvent event) {
+        if (!(event.getEntity().getSource() instanceof Player shooter)) {
+            return;
+        }
+
+        boolean isHarmfulCheck = event.getEntity().getBasePotionType() != null && 
+                           (event.getEntity().getBasePotionType().toString().contains("POISON") || 
+                            event.getEntity().getBasePotionType().toString().contains("HARM") || 
+                            event.getEntity().getBasePotionType().toString().contains("SLOWNESS") || 
+                            event.getEntity().getBasePotionType().toString().contains("WEAKNESS"));
+        
+        // Alternatively check custom effects
+        if (!isHarmfulCheck) {
+            for (PotionEffect effect : event.getEntity().getCustomEffects()) {
+                if (effect.getType().getCategory() == org.bukkit.potion.PotionEffectTypeCategory.HARMFUL) {
+                    isHarmfulCheck = true;
+                    break;
+                }
+            }
+        }
+
+        final boolean finalIsHarmful = isHarmfulCheck;
+        final boolean finalIsBeneficial = !isHarmfulCheck; // Simplified for cloud
+
+        event.getAffectedEntities().removeIf(entity -> {
+            if (!(entity instanceof Player victim)) {
+                return false;
+            }
+            boolean isTeammate = miniGameService.areTeammates(shooter, victim);
+            if (isTeammate) {
+                return finalIsHarmful;
+            } else {
+                return finalIsBeneficial;
+            }
+        });
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

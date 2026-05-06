@@ -9,6 +9,6 @@ public final class PlayerUtils {
     }
 
     public static boolean isObserver(Player player) {
-        return player != null && player.isOp();
+        return player != null && player.getGameMode() == org.bukkit.GameMode.SPECTATOR;
     }
 }

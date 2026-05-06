@@ -10,9 +10,13 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
-final class RoundStatsService {
+public final class RoundStatsService {
     private final Map<UUID, Integer> killStats = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> captureStats = new ConcurrentHashMap<>();
+
+    public int getKills(UUID playerId) {
+        return killStats.getOrDefault(playerId, 0);
+    }
 
     void clear() {
         killStats.clear();

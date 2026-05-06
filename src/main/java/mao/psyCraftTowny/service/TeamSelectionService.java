@@ -64,6 +64,10 @@ public class TeamSelectionService {
         teamByPlayer.remove(player.getUniqueId());
     }
 
+    public void clearAll() {
+        teamByPlayer.clear();
+    }
+
     public void openTab(Player player, Config config) {
         teamMenuOpen.add(player.getUniqueId());
         Inventory inv = Bukkit.createInventory(null, TEAM_GUI_SIZE, TEAM_GUI_TITLE);

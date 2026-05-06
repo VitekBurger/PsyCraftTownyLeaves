@@ -46,6 +46,7 @@ public class PctaCommand implements CommandExecutor, TabCompleter {
             case "point" -> onPoint(sender, args);
             case "map" -> onMap(sender, args);
             case "reload" -> onReload(sender);
+            case "stop" -> onStop(sender);
             default -> {
                 sendUsage(sender);
                 yield true;
@@ -56,6 +57,12 @@ public class PctaCommand implements CommandExecutor, TabCompleter {
     private boolean onReload(CommandSender sender) {
         miniGameService.reloadFromConfig();
         sender.sendMessage("§aКонфиг перезагружен, новые значения применены.");
+        return true;
+    }
+
+    private boolean onStop(CommandSender sender) {
+        miniGameService.forceStopGame();
+        sender.sendMessage("§aИгра экстренно остановлена.");
         return true;
     }
 
