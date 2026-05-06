@@ -255,8 +255,8 @@ public class MiniGameService {
         }
         UUID uuid = player.getUniqueId();
         final var team = teamSelectionService.getSelectedTeam(player);
-        if (currentMode != GameMap.Mode.FFA && currentMode != GameMap.Mode.TDM && team == BLUE_TEAM) {
-            player.sendMessage("§eВы возродитесь через " + config.getRespawnDelaySeconds() + " сек. Респавны нападающих в этом режиме бесконечные");
+        if (currentMode == GameMap.Mode.FFA || currentMode == GameMap.Mode.TDM) {
+            player.sendMessage("§eВы возродитесь через " + config.getRespawnDelaySeconds() + " сек. Респавны в этом режиме бесконечные");
         } else {
             int left = remainingRespawns.getOrDefault(uuid, config.getRespawnsPerPlayer());
             if (left <= 0) {
