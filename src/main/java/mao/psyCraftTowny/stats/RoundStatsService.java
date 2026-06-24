@@ -1,4 +1,4 @@
-package mao.psyCraftTowny.service;
+package mao.psyCraftTowny.stats;
 
 import org.bukkit.Bukkit;
 
@@ -18,12 +18,12 @@ public final class RoundStatsService {
         return killStats.getOrDefault(playerId, 0);
     }
 
-    void clear() {
+    public void clear() {
         killStats.clear();
         captureStats.clear();
     }
 
-    void ensurePlayer(UUID playerId) {
+    public void ensurePlayer(UUID playerId) {
         if (playerId == null) {
             return;
         }
@@ -31,21 +31,21 @@ public final class RoundStatsService {
         captureStats.putIfAbsent(playerId, 0);
     }
 
-    void recordKill(UUID playerId) {
+    public void recordKill(UUID playerId) {
         if (playerId == null) {
             return;
         }
         killStats.merge(playerId, 1, Integer::sum);
     }
 
-    void recordCapture(UUID playerId) {
+    public void recordCapture(UUID playerId) {
         if (playerId == null) {
             return;
         }
         captureStats.merge(playerId, 1, Integer::sum);
     }
 
-    void announceRoundLeaders(Function<UUID, String> nameResolver) {
+    public void announceRoundLeaders(Function<UUID, String> nameResolver) {
         Bukkit.broadcastMessage("§6----- Итоги раунда -----");
         broadcastTopThree("§eТоп-3 по киллам", killStats, "§7киллов", nameResolver);
         broadcastTopThree("§bТоп-3 по захвату точек", captureStats, "§7очков захвата", nameResolver);

@@ -2,11 +2,11 @@ package mao.psyCraftTowny;
 
 import mao.psyCraftTowny.command.PctaCommand;
 import mao.psyCraftTowny.listener.MiniGameListener;
-import mao.psyCraftTowny.service.KitSelectionService;
-import mao.psyCraftTowny.service.PlayerItemsService;
-import mao.psyCraftTowny.service.MapSelectionService;
+import mao.psyCraftTowny.kits.KitSelectionService;
+import mao.psyCraftTowny.kits.PlayerItemsService;
+import mao.psyCraftTowny.maps.MapSelectionService;
 import mao.psyCraftTowny.service.MiniGameService;
-import mao.psyCraftTowny.service.TeamSelectionService;
+import mao.psyCraftTowny.teams.TeamSelectionService;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class PsyCraftTowny extends JavaPlugin {

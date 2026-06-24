@@ -1,0 +1,5 @@
+-cp
+e:\\IdeaProjects\\PsyCraftTownyLeaves\\libs\\*
+-sourcepath
+e:\\IdeaProjects\\PsyCraftTownyLeaves\\src\\main\\java
+e:\\IdeaProjects\\PsyCraftTownyLeaves\\src\\main\\java\\mao\\psyCraftTowny\\PsyCraftTowny.java

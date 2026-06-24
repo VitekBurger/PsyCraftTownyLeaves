@@ -1,9 +1,9 @@
-package mao.psyCraftTowny.service;
+package mao.psyCraftTowny.config;
 
 import mao.psyCraftTowny.PsyCraftTowny;
-import mao.psyCraftTowny.model.CapturePoint;
-import mao.psyCraftTowny.model.Config;
-import mao.psyCraftTowny.model.GameMap;
+import mao.psyCraftTowny.points.CapturePoint;
+import mao.psyCraftTowny.config.Config;
+import mao.psyCraftTowny.maps.GameMap;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;

@@ -1,7 +1,7 @@
-package mao.psyCraftTowny.service;
+package mao.psyCraftTowny.kits;
 
 import mao.psyCraftTowny.PsyCraftTowny;
-import mao.psyCraftTowny.model.KitType;
+import mao.psyCraftTowny.kits.KitType;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.DyeColor;
@@ -46,7 +46,12 @@ public class PlayerItemsService {
         }
 
         if (type == KitType.CROSSBOWMAN) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, Integer.MAX_VALUE, 0, false, false, false));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, Integer.MAX_VALUE, 1, false, false, false));
+        }
+
+        if (type == KitType.NINJA) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, Integer.MAX_VALUE, 0, false, false, false));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 0, false, false, false));
         }
 
         if (shouldHaveShield(type)) {
@@ -133,18 +138,25 @@ public class PlayerItemsService {
     }
 
     private void applyCrossbowKit(Player player) {
-        player.getInventory().addItem(new ItemStack(Material.CROSSBOW, 1));
-        player.getInventory().addItem(new ItemStack(Material.ARROW, 96));
-        player.getInventory().addItem(createCrossbowFireworks(16, 1));
-        player.getInventory().addItem(createCrossbowFireworks(1, 5)); // Ult
         player.getInventory().addItem(new ItemStack(Material.WOODEN_SWORD, 1));
-        player.getInventory().addItem(new ItemStack(Material.WOODEN_PICKAXE, 1));
-        player.getInventory().addItem(new ItemStack(Material.COBBLESTONE, 20));
+        player.getInventory().addItem(new ItemStack(Material.CROSSBOW, 1));
+        player.getInventory().addItem(createCrossbowFireworks(8, 1));
+        player.getInventory().addItem(new ItemStack(Material.CROSSBOW, 1));
+        player.getInventory().addItem(new ItemStack(Material.CROSSBOW, 1));
+        player.getInventory().addItem(new ItemStack(Material.CROSSBOW, 1));
+        player.getInventory().addItem(new ItemStack(Material.WATER_BUCKET, 1));
         player.getInventory().addItem(new ItemStack(Material.COOKED_BEEF, 32));
-        player.getInventory().setHelmet(new ItemStack(Material.CHAINMAIL_HELMET));
+        player.getInventory().addItem(new ItemStack(Material.COBBLESTONE, 32));
+        
+        player.getInventory().setItem(9, new ItemStack(Material.SPECTRAL_ARROW, 1));
+        player.getInventory().setItem(10, new ItemStack(Material.ARROW, 1));
+        player.getInventory().setItem(11, createTippedArrow(PotionEffectType.JUMP_BOOST, 20 * 30, 1));
+        player.getInventory().setItem(12, new ItemStack(Material.SPYGLASS, 1));
+
+        player.getInventory().setHelmet(new ItemStack(Material.LEATHER_HELMET));
         player.getInventory().setChestplate(new ItemStack(Material.CHAINMAIL_CHESTPLATE));
         player.getInventory().setLeggings(new ItemStack(Material.CHAINMAIL_LEGGINGS));
-        player.getInventory().setBoots(new ItemStack(Material.CHAINMAIL_BOOTS));
+        player.getInventory().setBoots(new ItemStack(Material.LEATHER_BOOTS));
     }
 
     private void applyTankKit(Player player) {
@@ -167,10 +179,11 @@ public class PlayerItemsService {
 
     private void applyNinjaKit(Player player) {
         player.getInventory().addItem(new ItemStack(Material.DIAMOND_SWORD, 1));
-        player.getInventory().addItem(new ItemStack(Material.WOODEN_PICKAXE, 1));
-        player.getInventory().addItem(new ItemStack(Material.ENDER_PEARL, 3));
-        player.getInventory().addItem(new ItemStack(Material.COBBLESTONE, 24));
         player.getInventory().addItem(new ItemStack(Material.COOKED_BEEF, 32));
+        player.getInventory().addItem(new ItemStack(Material.ENDER_PEARL, 5));
+        player.getInventory().addItem(new ItemStack(Material.COBBLESTONE, 20));
+        player.getInventory().addItem(new ItemStack(Material.WOODEN_PICKAXE, 1));
+        player.getInventory().addItem(new ItemStack(Material.WOODEN_AXE, 1));
         player.getInventory().setHelmet(new ItemStack(Material.LEATHER_HELMET));
         player.getInventory().setChestplate(new ItemStack(Material.LEATHER_CHESTPLATE));
         player.getInventory().setLeggings(new ItemStack(Material.LEATHER_LEGGINGS));
@@ -226,6 +239,16 @@ public class PlayerItemsService {
         ItemMeta rawMeta = item.getItemMeta();
         if (rawMeta instanceof PotionMeta meta) {
             meta.setDisplayName(name);
+            meta.addCustomEffect(new PotionEffect(type, durationTicks, amplifier), true);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    private ItemStack createTippedArrow(PotionEffectType type, int durationTicks, int amplifier) {
+        ItemStack item = new ItemStack(Material.TIPPED_ARROW, 1);
+        ItemMeta rawMeta = item.getItemMeta();
+        if (rawMeta instanceof PotionMeta meta) {
             meta.addCustomEffect(new PotionEffect(type, durationTicks, amplifier), true);
             item.setItemMeta(meta);
         }

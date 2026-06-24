@@ -1,6 +1,6 @@
-package mao.psyCraftTowny.service;
+package mao.psyCraftTowny.teams;
 
-import mao.psyCraftTowny.model.Config;
+import mao.psyCraftTowny.config.Config;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;

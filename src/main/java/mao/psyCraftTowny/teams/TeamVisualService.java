@@ -1,4 +1,4 @@
-package mao.psyCraftTowny.service;
+package mao.psyCraftTowny.teams;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;

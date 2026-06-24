@@ -1,10 +1,17 @@
 package mao.psyCraftTowny.service;
 
 import mao.psyCraftTowny.PsyCraftTowny;
-import mao.psyCraftTowny.model.CapturePoint;
-import mao.psyCraftTowny.model.Config;
-import mao.psyCraftTowny.model.GameMap;
-import mao.psyCraftTowny.model.KitType;
+import mao.psyCraftTowny.config.ConfigService;
+import mao.psyCraftTowny.kits.KitSelectionService;
+import mao.psyCraftTowny.kits.PlayerItemsService;
+import mao.psyCraftTowny.maps.MapSelectionService;
+import mao.psyCraftTowny.points.CapturePoint;
+import mao.psyCraftTowny.config.Config;
+import mao.psyCraftTowny.maps.GameMap;
+import mao.psyCraftTowny.kits.KitType;
+import mao.psyCraftTowny.stats.RoundStatsService;
+import mao.psyCraftTowny.teams.TeamSelectionService;
+import mao.psyCraftTowny.teams.TeamVisualService;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.GameMode;

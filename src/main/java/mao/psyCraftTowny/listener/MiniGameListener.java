@@ -1,10 +1,10 @@
 package mao.psyCraftTowny.listener;
 
-import mao.psyCraftTowny.model.KitType;
-import mao.psyCraftTowny.service.KitSelectionService;
-import mao.psyCraftTowny.service.MapSelectionService;
+import mao.psyCraftTowny.kits.KitType;
+import mao.psyCraftTowny.kits.KitSelectionService;
+import mao.psyCraftTowny.maps.MapSelectionService;
 import mao.psyCraftTowny.service.MiniGameService;
-import mao.psyCraftTowny.service.TeamSelectionService;
+import mao.psyCraftTowny.teams.TeamSelectionService;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;

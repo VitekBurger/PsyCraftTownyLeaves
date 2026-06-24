@@ -1,7 +1,7 @@
-package mao.psyCraftTowny.service;
+package mao.psyCraftTowny.maps;
 
-import mao.psyCraftTowny.model.Config;
-import mao.psyCraftTowny.model.GameMap;
+import mao.psyCraftTowny.config.Config;
+import mao.psyCraftTowny.maps.GameMap;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;

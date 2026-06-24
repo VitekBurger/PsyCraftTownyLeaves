@@ -1,6 +1,6 @@
-package mao.psyCraftTowny.service;
+package mao.psyCraftTowny.kits;
 
-import mao.psyCraftTowny.model.KitType;
+import mao.psyCraftTowny.kits.KitType;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;

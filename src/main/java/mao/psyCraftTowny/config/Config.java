@@ -1,6 +1,8 @@
-package mao.psyCraftTowny.model;
+package mao.psyCraftTowny.config;
 
 import org.bukkit.Location;
+import mao.psyCraftTowny.maps.GameMap;
+import mao.psyCraftTowny.points.CapturePoint;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

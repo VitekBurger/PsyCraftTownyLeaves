@@ -1,4 +1,4 @@
-package mao.psyCraftTowny.model;
+package mao.psyCraftTowny.points;
 
 public class CapturePoint {
     private final int id;

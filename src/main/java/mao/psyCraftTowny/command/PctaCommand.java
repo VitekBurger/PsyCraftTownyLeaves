@@ -1,6 +1,6 @@
 package mao.psyCraftTowny.command;
 
-import mao.psyCraftTowny.model.GameMap;
+import mao.psyCraftTowny.maps.GameMap;
 import mao.psyCraftTowny.service.MiniGameService;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
